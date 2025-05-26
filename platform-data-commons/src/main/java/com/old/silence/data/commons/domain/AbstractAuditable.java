@@ -17,7 +17,6 @@ import java.util.Optional;
 /**
  * @author MurrayZhang
  */
-@MappedSuperclass
 public abstract class AbstractAuditable<ID extends Serializable> implements Serializable {
 
     private static final long serialVersionUID = -8981379469380861749L;

@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.persistence.Column;
-import javax.persistence.MappedSuperclass;
 import javax.persistence.Version;
 import java.io.Serializable;
 import java.time.Instant;
@@ -17,7 +16,6 @@ import java.util.Optional;
 /**
  * @author MurrayZhang
  */
-@MappedSuperclass
 public abstract class AbstractAuditable<ID extends Serializable> implements Serializable {
 
     private static final long serialVersionUID = -8981379469380861749L;

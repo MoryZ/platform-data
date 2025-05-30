@@ -3,7 +3,6 @@ package com.old.silence.data.commons.domain;
 import com.baomidou.mybatisplus.annotation.TableField;
 
 import javax.persistence.Column;
-import javax.persistence.MappedSuperclass;
 import java.io.Serializable;
 
 /**

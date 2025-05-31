@@ -17,6 +17,22 @@ public class AuditableVo {
         return Optional.ofNullable(createdBy);
     }
 
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public void setCreatedDate(Instant createdDate) {
+        this.createdDate = createdDate;
+    }
+
+    public void setUpdatedBy(String updatedBy) {
+        this.updatedBy = updatedBy;
+    }
+
+    public void setUpdatedDate(Instant updatedDate) {
+        this.updatedDate = updatedDate;
+    }
+
     Optional<Instant> getCreatedDate() {
        return Optional.ofNullable(createdDate);
     }

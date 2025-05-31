@@ -1,13 +1,12 @@
 package com.old.silence.data.commons.domain;
 
 import org.springframework.lang.Nullable;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.baomidou.mybatisplus.annotation.Version;
 
-import javax.persistence.Column;
-import javax.persistence.MappedSuperclass;
-import javax.persistence.Version;
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.Objects;
@@ -25,20 +24,18 @@ public abstract class AbstractAuditable<ID extends Serializable> implements Seri
     @TableId(type = IdType.ASSIGN_ID)
     private ID id;
 
-    @Column(updatable = false)
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String createdBy;
 
-    @JsonProperty("createdAt")
-    @Column(name = "CREATED_DATE", updatable = false)
+    @TableField(value = "CREATED_DATE", updateStrategy = FieldStrategy.NEVER)
     private Instant createdDate;
 
-    @Column(name = "UPDATED_BY")
-    private String lastModifiedBy;
+    @TableField(value = "UPDATED_BY")
+    private String updatedBy;
 
     @Version
-    @JsonProperty("lastModifiedAt")
-    @Column(name = "UPDATED_DATE")
-    private Instant lastModifiedDate;
+    @TableField(value = "UPDATED_DATE")
+    private Instant updatedDate;
 
     @Nullable
     public ID getId() {
@@ -66,20 +63,20 @@ public abstract class AbstractAuditable<ID extends Serializable> implements Seri
         this.createdDate = createdDate;
     }
 
-    public Optional<String> getLastModifiedBy() {
-        return Optional.ofNullable(lastModifiedBy);
+    public Optional<String> getUpdatedBy() {
+        return Optional.ofNullable(updatedBy);
     }
 
-    public void setLastModifiedBy(String lastModifiedBy) {
-        this.lastModifiedBy = lastModifiedBy;
+    public void setUpdatedBy(String updatedBy) {
+        this.updatedBy = updatedBy;
     }
 
-    public Optional<Instant> getLastModifiedDate() {
-        return Optional.ofNullable(lastModifiedDate);
+    public Optional<Instant> getUpdatedDate() {
+        return Optional.ofNullable(updatedDate);
     }
 
-    public void setLastModifiedDate(Instant lastModifiedDate) {
-        this.lastModifiedDate = lastModifiedDate;
+    public void setUpdatedDate(Instant updatedDate) {
+        this.updatedDate = updatedDate;
     }
 
     @Override

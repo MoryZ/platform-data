@@ -47,32 +47,32 @@ public abstract class AbstractAuditable<ID extends Serializable> implements Seri
     }
 
 
-    public Optional<String> getCreatedBy() {
-        return Optional.ofNullable(createdBy);
+    public String getCreatedBy() {
+        return createdBy;
     }
 
     public void setCreatedBy(String createdBy) {
         this.createdBy = createdBy;
     }
 
-    public Optional<Instant> getCreatedDate() {
-        return Optional.ofNullable(createdDate);
+    public Instant getCreatedDate() {
+        return createdDate;
     }
 
     public void setCreatedDate(Instant createdDate) {
         this.createdDate = createdDate;
     }
 
-    public Optional<String> getUpdatedBy() {
-        return Optional.ofNullable(updatedBy);
+    public String getUpdatedBy() {
+        return updatedBy;
     }
 
     public void setUpdatedBy(String updatedBy) {
         this.updatedBy = updatedBy;
     }
 
-    public Optional<Instant> getUpdatedDate() {
-        return Optional.ofNullable(updatedDate);
+    public Instant getUpdatedDate() {
+        return updatedDate;
     }
 
     public void setUpdatedDate(Instant updatedDate) {

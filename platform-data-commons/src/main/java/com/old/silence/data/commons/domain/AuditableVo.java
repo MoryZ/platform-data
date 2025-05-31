@@ -13,35 +13,35 @@ public class AuditableVo {
     private String updatedBy;
     private Instant updatedDate;
 
-    Optional<String> getCreatedBy() {
-        return Optional.ofNullable(createdBy);
+    public String getCreatedBy() {
+        return createdBy;
     }
 
     public void setCreatedBy(String createdBy) {
         this.createdBy = createdBy;
     }
 
+    public Instant getCreatedDate() {
+        return createdDate;
+    }
+
     public void setCreatedDate(Instant createdDate) {
         this.createdDate = createdDate;
+    }
+
+    public String getUpdatedBy() {
+        return updatedBy;
     }
 
     public void setUpdatedBy(String updatedBy) {
         this.updatedBy = updatedBy;
     }
 
+    public Instant getUpdatedDate() {
+        return updatedDate;
+    }
+
     public void setUpdatedDate(Instant updatedDate) {
         this.updatedDate = updatedDate;
-    }
-
-    Optional<Instant> getCreatedDate() {
-       return Optional.ofNullable(createdDate);
-    }
-
-    Optional<String> getUpdatedBy() {
-        return Optional.ofNullable(updatedBy);
-    }
-
-    Optional<Instant> getUpdatedDate() {
-        return Optional.ofNullable(updatedDate);
     }
 }

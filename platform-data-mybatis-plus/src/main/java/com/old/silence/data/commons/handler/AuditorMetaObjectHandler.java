@@ -1,9 +1,12 @@
 package com.old.silence.data.commons.handler;
 
 import org.apache.ibatis.reflection.MetaObject;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * @author moryzang
@@ -28,9 +31,8 @@ public class AuditorMetaObjectHandler implements MetaObjectHandler {
 
     // 获取当前用户（需结合安全框架）
     private String getCurrentUsername() {
-       /* return Optional.ofNullable(SecurityContextHolder.getContext().getAuthentication())
+        return Optional.ofNullable(SecurityContextHolder.getContext().getAuthentication())
                 .map(Authentication::getName)
-                .orElse("SYSTEM");*/
-        return "SYSTEM";
+                .orElse("SYSTEM");
     }
 }

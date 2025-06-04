@@ -1,5 +1,6 @@
 package com.old.silence.data.commons.autoconfigure;
 
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.baomidou.mybatisplus.annotation.DbType;
@@ -12,7 +13,7 @@ import com.old.silence.data.commons.injecter.CustomSqlInjector;
 /**
  * @author moryzang
  */
-@Configuration
+@AutoConfiguration
 public class MybatisPlusConfig {
 
     @Bean

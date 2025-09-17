@@ -14,7 +14,7 @@ import java.util.Optional;
 
 
 /**
- * @author MurrayZhang
+ * @author moryzang
  */
 public abstract class AbstractAuditable<ID extends Serializable> implements Serializable {
 

@@ -1,7 +1,7 @@
 package com.old.silence.data.commons.converter;
 
 /**
- * @author MurrayZhang
+ * @author moryzang
  */
 public class Part {
 

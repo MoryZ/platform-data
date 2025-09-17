@@ -10,7 +10,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * @author MurrayZhang
+ * @author moryzang
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

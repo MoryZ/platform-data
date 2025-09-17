@@ -212,15 +212,10 @@ public class QueryWrapperConverter {
         while (current != null && current != Object.class) {
 
             try {
-
                 return current.getDeclaredField(fieldName);
-
             } catch (NoSuchFieldException e) {
-
                 current = current.getSuperclass();
-
             }
-
         }
 
         throw new NoSuchFieldException("Field '" + fieldName + "' not found in " + clazz.getName() + " or its superclasses");

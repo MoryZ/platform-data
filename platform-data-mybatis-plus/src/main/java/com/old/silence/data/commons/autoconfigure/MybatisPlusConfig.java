@@ -1,6 +1,7 @@
 package com.old.silence.data.commons.autoconfigure;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import com.baomidou.mybatisplus.annotation.DbType;
@@ -30,6 +31,7 @@ public class MybatisPlusConfig {
 
     // 自定义审计处理器
     @Bean
+    @ConditionalOnBean(UserContextAware.class)
     public MetaObjectHandler metaObjectHandler(UserContextAware<String> userContextAware) {
         return new AuditorMetaObjectHandler(userContextAware);
     }

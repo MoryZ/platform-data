@@ -1,16 +1,16 @@
 package com.old.silence.data.commons.domain;
 
+import java.io.Serializable;
+import java.time.Instant;
+import java.util.Objects;
+import javax.persistence.Id;
+
 import org.springframework.lang.Nullable;
 import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.Version;
-
-import javax.persistence.Id;
-import java.io.Serializable;
-import java.time.Instant;
-import java.util.Objects;
 
 
 /**

@@ -1,15 +1,6 @@
 package com.old.silence.data.commons.converter;
 
-import org.springframework.beans.BeanWrapper;
-import org.springframework.beans.BeanWrapperImpl;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.core.annotation.AnnotationUtils;
-import org.springframework.util.ReflectionUtils;
-import org.springframework.util.StringUtils;
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.old.silence.data.commons.annotation.QueryConvert;
-import com.old.silence.data.commons.annotation.RelationalQueryProperty;
+import static com.old.silence.data.commons.converter.Part.Type;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -22,7 +13,16 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static com.old.silence.data.commons.converter.Part.Type;
+import org.springframework.beans.BeanWrapper;
+import org.springframework.beans.BeanWrapperImpl;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.util.ReflectionUtils;
+import org.springframework.util.StringUtils;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.old.silence.data.commons.annotation.QueryConvert;
+import com.old.silence.data.commons.annotation.RelationalQueryProperty;
 
 /**
  * @author moryzang

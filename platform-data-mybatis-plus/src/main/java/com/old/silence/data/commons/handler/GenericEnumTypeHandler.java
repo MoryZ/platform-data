@@ -1,16 +1,15 @@
 package com.old.silence.data.commons.handler;
 
-import org.apache.ibatis.type.BaseTypeHandler;
-import org.apache.ibatis.type.JdbcType;
-import org.apache.ibatis.type.MappedJdbcTypes;
-import org.apache.ibatis.type.MappedTypes;
-
-import com.old.silence.core.enums.EnumValue;
-
 import java.sql.CallableStatement;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+
+import org.apache.ibatis.type.BaseTypeHandler;
+import org.apache.ibatis.type.JdbcType;
+import org.apache.ibatis.type.MappedJdbcTypes;
+import org.apache.ibatis.type.MappedTypes;
+import com.old.silence.core.enums.EnumValue;
 
 /**
  * @author moryzang
@@ -45,14 +44,20 @@ public class GenericEnumTypeHandler<E extends Enum<E> & EnumValue<?>>
     @Override
     public E getNullableResult(ResultSet rs, String columnName)
             throws SQLException {
-        Object code = rs.getByte(columnName);
+        Object code = rs.getObject(columnName);
+        if (code == null) {
+            return null;
+        }
         return parseEnum(code);
     }
 
     @Override
     public E getNullableResult(ResultSet rs, int columnIndex)
             throws SQLException {
-        Object code = rs.getByte(columnIndex);
+        Object code = rs.getObject(columnIndex);
+        if (code == null) {
+            return null;
+        }
         return parseEnum(code);
     }
 

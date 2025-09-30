@@ -1,11 +1,9 @@
 package com.old.silence.data.commons.domain;
 
+import java.io.Serializable;
+
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableLogic;
-
-import javax.persistence.Column;
-import javax.persistence.MappedSuperclass;
-import java.io.Serializable;
 
 /**
  * @author murrayZhang

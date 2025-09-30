@@ -1,10 +1,10 @@
 package com.old.silence.data.commons.handler;
 
+import java.time.Instant;
+
 import org.apache.ibatis.reflection.MetaObject;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.old.silence.core.security.UserContextAware;
-
-import java.time.Instant;
 
 /**
  * @author moryzang
@@ -14,9 +14,10 @@ public class AuditorMetaObjectHandler implements MetaObjectHandler {
     private final UserContextAware<String> userContextAware;
 
     // 通过构造函数注入
-    public AuditorMetaObjectHandler(UserContextAware<String>  userContextAware) {
+    public AuditorMetaObjectHandler(UserContextAware<String> userContextAware) {
         this.userContextAware = userContextAware;
     }
+
     // 插入时自动填充
     @Override
     public void insertFill(MetaObject metaObject) {

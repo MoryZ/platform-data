@@ -1,16 +1,15 @@
 package com.old.silence.data.commons.domain;
 
+import java.io.Serializable;
+import java.time.Instant;
+import java.util.Objects;
+
 import org.springframework.lang.Nullable;
 import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.Version;
-
-import java.io.Serializable;
-import java.time.Instant;
-import java.util.Objects;
-import java.util.Optional;
 
 
 /**
@@ -24,17 +23,17 @@ public abstract class AbstractAuditable<ID extends Serializable> implements Seri
     @TableId(type = IdType.ASSIGN_ID)
     private ID id;
 
-    @TableField(updateStrategy = FieldStrategy.NEVER)
+    @TableField(value = "created_by", updateStrategy = FieldStrategy.NEVER)
     private String createdBy;
 
-    @TableField(value = "CREATED_DATE", updateStrategy = FieldStrategy.NEVER)
+    @TableField(value = "created_date", updateStrategy = FieldStrategy.NEVER)
     private Instant createdDate;
 
-    @TableField(value = "UPDATED_BY")
+    @TableField(value = "updated_by")
     private String updatedBy;
 
     @Version
-    @TableField(value = "UPDATED_DATE")
+    @TableField(value = "updated_date")
     private Instant updatedDate;
 
     @Nullable

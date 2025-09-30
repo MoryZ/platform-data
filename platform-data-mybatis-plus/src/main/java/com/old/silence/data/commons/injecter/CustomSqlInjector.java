@@ -1,11 +1,11 @@
 package com.old.silence.data.commons.injecter;
 
+import java.util.List;
+
 import com.baomidou.mybatisplus.core.injector.AbstractMethod;
 import com.baomidou.mybatisplus.core.injector.DefaultSqlInjector;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
 import com.baomidou.mybatisplus.extension.injector.methods.InsertBatchSomeColumn;
-
-import java.util.List;
 
 /**
  * @author moryzang

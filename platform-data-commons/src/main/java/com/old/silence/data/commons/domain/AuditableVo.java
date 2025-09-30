@@ -1,7 +1,6 @@
 package com.old.silence.data.commons.domain;
 
 import java.time.Instant;
-import java.util.Optional;
 
 /**
  * @author murrayZhang

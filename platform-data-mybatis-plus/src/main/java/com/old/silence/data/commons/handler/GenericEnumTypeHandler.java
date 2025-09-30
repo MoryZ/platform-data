@@ -44,8 +44,8 @@ public class GenericEnumTypeHandler<E extends Enum<E> & EnumValue<?>>
     @Override
     public E getNullableResult(ResultSet rs, String columnName)
             throws SQLException {
-        Object code = rs.getObject(columnName);
-        if (code == null) {
+        Byte code = rs.getByte(columnName);
+        if (rs.wasNull()) {
             return null;
         }
         return parseEnum(code);
@@ -54,8 +54,8 @@ public class GenericEnumTypeHandler<E extends Enum<E> & EnumValue<?>>
     @Override
     public E getNullableResult(ResultSet rs, int columnIndex)
             throws SQLException {
-        Object code = rs.getObject(columnIndex);
-        if (code == null) {
+        Byte code = rs.getByte(columnIndex);
+        if (rs.wasNull()) {
             return null;
         }
         return parseEnum(code);
@@ -64,8 +64,11 @@ public class GenericEnumTypeHandler<E extends Enum<E> & EnumValue<?>>
     @Override
     public E getNullableResult(CallableStatement cs, int columnIndex)
             throws SQLException {
-        Object code = cs.getObject(columnIndex);
-        return code == null ? null : parseEnum(code);
+        Byte code = cs.getByte(columnIndex);
+        if (cs.wasNull()) {
+            return null;
+        }
+        return parseEnum(code);
     }
 
     private E parseEnum(Object code) {

@@ -1,7 +1,8 @@
 package com.old.silence.data.commons.domain;
 
+import jakarta.persistence.Column;
+
 import java.io.Serializable;
-import javax.persistence.Column;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 

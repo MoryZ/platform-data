@@ -1,9 +1,10 @@
 package com.old.silence.data.commons.domain;
 
+import jakarta.persistence.Id;
+
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.Objects;
-import javax.persistence.Id;
 
 import org.springframework.lang.Nullable;
 import com.baomidou.mybatisplus.annotation.FieldStrategy;

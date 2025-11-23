@@ -25,6 +25,7 @@ public class AuditorMetaObjectHandler implements MetaObjectHandler {
         this.strictInsertFill(metaObject, "updatedDate", Instant::now, Instant.class);
         this.strictInsertFill(metaObject, "createdBy", this::getCurrentAuditor, String.class);
         this.strictInsertFill(metaObject, "updatedBy", this::getCurrentAuditor, String.class);
+
     }
 
     // 更新时自动填充

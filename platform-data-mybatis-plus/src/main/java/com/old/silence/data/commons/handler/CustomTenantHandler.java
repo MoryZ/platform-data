@@ -31,7 +31,7 @@ public class CustomTenantHandler implements TenantLineHandler {
 
     @Override
     public String getTenantIdColumn() {
-        return "tenant_id";
+        return "namespace_id";
     }
 
     @Override

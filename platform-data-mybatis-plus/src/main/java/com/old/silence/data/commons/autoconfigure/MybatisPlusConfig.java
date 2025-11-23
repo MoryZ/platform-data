@@ -17,10 +17,15 @@ import com.baomidou.mybatisplus.extension.plugins.inner.TenantLineInnerIntercept
 import com.old.silence.core.security.TenantContextAware;
 import com.old.silence.core.security.UserContextAware;
 import com.old.silence.data.commons.handler.AuditorMetaObjectHandler;
+import com.old.silence.data.commons.handler.CompositeMetaObjectHandler;
 import com.old.silence.data.commons.handler.CustomTenantHandler;
+import com.old.silence.data.commons.handler.DefaultMetaObjectHandler;
 import com.old.silence.data.commons.handler.TenantMetaObjectHandler;
 import com.old.silence.data.commons.injecter.CustomSqlInjector;
 import com.old.silence.data.commons.tenant.TenantTableRegistry;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author moryzang
@@ -54,17 +59,29 @@ public class MybatisPlusConfig {
         return interceptor;
     }
 
-    // 自定义审计处理器
+    // 使用 ObjectProvider 解决多个 MetaObjectHandler 的问题
     @Bean
-    @ConditionalOnBean(UserContextAware.class)
-    public MetaObjectHandler auditorMetaObjectHandler(UserContextAware<String> userContextAware) {
-        return new AuditorMetaObjectHandler(userContextAware);
-    }
+    public MetaObjectHandler metaObjectHandler(
+            ObjectProvider<UserContextAware<String>> userContextAwareProvider,
+            ObjectProvider<TenantContextAware<String>> tenantContextAwareProvider) {
 
-    @Bean
-    @ConditionalOnBean(TenantContextAware.class)
-    public MetaObjectHandler tenantMetaObjectHandler(TenantContextAware<String> tenantContextAware) {
-        return new TenantMetaObjectHandler(tenantContextAware);
+        List<MetaObjectHandler> handlers = new ArrayList<>();
+
+        // 动态添加可用的处理器
+        userContextAwareProvider.ifAvailable(userContextAware ->
+                handlers.add(new AuditorMetaObjectHandler(userContextAware)));
+
+        tenantContextAwareProvider.ifAvailable(tenantContextAware ->
+                handlers.add(new TenantMetaObjectHandler(tenantContextAware)));
+
+        // 返回适当的处理器
+        if (handlers.isEmpty()) {
+            return new DefaultMetaObjectHandler();
+        } else if (handlers.size() == 1) {
+            return handlers.getFirst();
+        } else {
+            return new CompositeMetaObjectHandler(handlers);
+        }
     }
 
 

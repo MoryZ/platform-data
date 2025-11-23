@@ -5,7 +5,7 @@ import java.util.Optional;
 /**
  * 多租户上下文感知接口，由业务方实现以提供当前请求的租户 ID。
  *
- * @author
+ * @author moryzang
  */
 public interface TenantContextAware<ID> {
 

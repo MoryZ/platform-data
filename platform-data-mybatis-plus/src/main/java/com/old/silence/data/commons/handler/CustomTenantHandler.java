@@ -1,15 +1,12 @@
 package com.old.silence.data.commons.handler;
 
 import net.sf.jsqlparser.expression.Expression;
-import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.StringValue;
-import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 
 import com.baomidou.mybatisplus.extension.plugins.handler.TenantLineHandler;
 import com.old.silence.core.security.TenantContextAware;
 import com.old.silence.data.commons.tenant.TenantTableRegistry;
 
-import java.util.Optional;
 
 /**
  * @author moryzang

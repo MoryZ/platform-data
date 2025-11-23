@@ -1,11 +1,15 @@
 package com.old.silence.data.commons.handler;
 
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.StringValue;
+import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 
 import com.baomidou.mybatisplus.extension.plugins.handler.TenantLineHandler;
 import com.old.silence.core.security.TenantContextAware;
 import com.old.silence.data.commons.tenant.TenantTableRegistry;
+
+import java.util.Optional;
 
 /**
  * @author moryzang
@@ -23,9 +27,12 @@ public class CustomTenantHandler implements TenantLineHandler {
 
     @Override
     public Expression getTenantId() {
-        return tenantContextAware.getCurrentTenantId()
-                .map(StringValue::new)
-                .orElseThrow(() -> new IllegalStateException("缺少租户上下文，无法拼接多租户条件"));
+        Optional<String> tenantId = tenantContextAware.getCurrentTenantId();
+        if (tenantId.isEmpty()) {
+            // 返回一个永远为true的表达式：1=1
+            return new EqualsTo(new LongValue(1), new LongValue(1));
+        }
+        return new StringValue(tenantId.get());
     }
 
 
@@ -38,5 +45,6 @@ public class CustomTenantHandler implements TenantLineHandler {
     public boolean ignoreTable(String tableName) {
         return !tenantTableRegistry.isTenantTable(tableName);
     }
+
 
 }

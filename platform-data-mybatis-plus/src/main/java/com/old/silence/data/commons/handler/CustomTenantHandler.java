@@ -16,6 +16,7 @@ import java.util.Optional;
  */
 public class CustomTenantHandler implements TenantLineHandler {
 
+    private static final String NO_TENANT = "NO_TENANT";
     private final TenantContextAware<String> tenantContextAware;
     private final TenantTableRegistry tenantTableRegistry;
 
@@ -27,12 +28,9 @@ public class CustomTenantHandler implements TenantLineHandler {
 
     @Override
     public Expression getTenantId() {
-        Optional<String> tenantId = tenantContextAware.getCurrentTenantId();
-        if (tenantId.isEmpty()) {
-            // 返回一个永远为true的表达式：1=1
-            return new EqualsTo(new LongValue(1), new LongValue(1));
-        }
-        return new StringValue(tenantId.get());
+        return tenantContextAware.getCurrentTenantId()
+                .map(StringValue::new)
+                .orElse(new StringValue(NO_TENANT)); // 使用一个特殊的租户值
     }
 
 
@@ -43,6 +41,11 @@ public class CustomTenantHandler implements TenantLineHandler {
 
     @Override
     public boolean ignoreTable(String tableName) {
+        String tenantId = tenantContextAware.getCurrentTenantId().orElse(NO_TENANT);
+        if (NO_TENANT.equals(tenantId)) {
+            return true; // 特殊租户值时忽略租户过滤
+        }
+
         return !tenantTableRegistry.isTenantTable(tableName);
     }
 

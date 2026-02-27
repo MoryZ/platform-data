@@ -21,7 +21,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.test.context.BootstrapWith;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
-import com.old.silence.data.mybatis.test.autoconfigure.AutoConfigurationDataMyBatis;
+import com.old.silence.data.mybatis.test.autoconfigure.AutoConfigureDataMyBatis;
 
 /**
  * @author moryzang
@@ -37,7 +37,7 @@ import com.old.silence.data.mybatis.test.autoconfigure.AutoConfigurationDataMyBa
 @Transactional
 @AutoConfigureCache
 @AutoConfigureJdbc
-@AutoConfigurationDataMyBatis
+@AutoConfigureDataMyBatis
 @AutoConfigureTestDatabase
 @ImportAutoConfiguration
 public @interface DataMyBatisTest {

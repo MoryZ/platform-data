@@ -1,0 +1,229 @@
+进度记录（2026-02-12）
+
+已完成：
+1) 投影查询基础设施已落地到 platform-data-mybatis-plus（main 模块）
+   - ProjectionField / ProjectionMetadata / ProjectionMetadataResolver
+   - ProjectionResultMapRegistry / ProjectionMappedStatementFactory
+   - ProjectionQueryExecutor
+   - ProjectionRepository / SimpleProjectionRepository / ProjectionRepositoryFactory
+   - ProjectionQueryAutoConfiguration
+2) 自动配置已接入：
+   - META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
+     已添加：com.old.silence.data.mybatis.projection.ProjectionQueryAutoConfiguration
+3) 设计约束已确认：
+   - 单表查询
+   - 投影字段与数据库一一对应
+   - 不支持 @TableField(exist=false)
+   - 不允许别名
+   - 排序/分页使用 MyBatis Plus 的 Page/OrderItem（转换逻辑你已实现）
+   - 枚举使用既有 TypeHandler
+4) 排序字段安全映射已完成
+   - OrderItem.column 通过实体字段映射校验，避免列名错误/注入
+5) 集成测试已添加（platform-data-mybatis-plus）
+   - 覆盖 @TableField 映射（含 is_ 前缀）
+   - 覆盖 enum TypeHandler 映射
+   - 覆盖分页与排序
+
+待办清单（下一次继续）：
+1) （可选）字节码增强版 Mapper
+   - 若需要真正扩展 Mapper 方法，可补 ByteBuddy 版本
+   - 当前实现是动态 MappedStatement + SqlSession 执行
+
+测试相关文件：
+platform-data-mybatis-plus/src/test/java/com/old/silence/data/mybatis/projection/
+   - ProjectionIntegrationTests.java
+   - TestUser.java / TestUserMapper.java / TestUserQuery.java / TestUserProjection.java / TestUserStatus.java
+platform-data-mybatis-plus/src/test/resources/
+   - schema.sql
+   - data.sql
+   - application-test.yml
+
+测试依赖已加入：
+platform-data-mybatis-plus/pom.xml
+   - spring-boot-starter-test (test scope)
+   - h2 (test scope)
+
+相关文件路径（已新增）：
+platform-data-mybatis-plus/src/main/java/com/old/silence/data/mybatis/projection/
+  - ProjectionField.java
+  - ProjectionMetadata.java
+  - ProjectionMetadataResolver.java
+  - ProjectionResultMapRegistry.java
+  - ProjectionMappedStatementFactory.java
+  - ProjectionQueryExecutor.java
+  - ProjectionRepository.java
+  - SimpleProjectionRepository.java
+  - ProjectionRepositoryFactory.java
+  - ProjectionQueryAutoConfiguration.java
+
+配置文件：
+platform-data-mybatis-plus/src/main/resources/META-INF/spring/
+  - org.springframework.boot.autoconfigure.AutoConfiguration.imports
+
+---
+
+进度补充（2026-02-27）
+
+已完成：
+1) 修复分页结果不正确问题
+   - `SimpleProjectionRepository` 在分页查询路径补充 `LIMIT offset,size`
+   - `ProjectionQueryExecutor` 在未触发分页拦截器时回填 `total`
+2) 修复默认测试不执行问题
+   - 将 `ProjectionIntegrationTests` 重命名为 `ProjectionIntegrationTest`
+   - 现在 `mvn test` 可自动发现并执行 2 个集成测试
+3) 修复测试编译依赖缺失
+   - `platform-data-mybatis-plus/pom.xml` 增加 `platform-core:test-jar`（test scope）
+4) （可选）ByteBuddy 增强版 Mapper 已补齐
+   - 新增运行时方法分派能力（按方法签名执行列表/分页查询）
+   - 新增 `ProjectionMapperByteBuddyFactory` 运行时生成 Mapper 接口实现
+   - 通过统一查询签名将调用委托到既有 `ProjectionRepository` 执行链
+   - 集成测试新增 `shouldSupportByteBuddyProjectionMapper` 覆盖运行时 Mapper 调用
+   - 新增测试接口 `TestUserProjectionMapperTest`（按 *Test 结尾命名）
+
+验证结果：
+- `mvn -pl platform-data-mybatis-plus test` 通过（Tests run: 2）
+- `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 全通过）
+
+补充验证（2026-02-27）：
+- `mvn -pl platform-data-mybatis-plus test` 通过（Tests run: 3）
+- `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 3/3 SUCCESS）
+
+追加事项（2026-02-27）：
+1) 文档补充完成
+   - 在测试 README 中新增 ByteBuddy Mapper 扩展用法与注意事项
+2) 异常场景测试完成
+   - 新增 `shouldThrowWhenProjectionTypeMissingInByteBuddyMapper`，覆盖未配置 `projectionType` 的报错路径
+3) 验证结果
+   - `mvn -pl platform-data-mybatis-plus test` 通过（Tests run: 4）
+
+分页优化（2026-02-27）：
+1) 移除手工 LIMIT 拼接
+   - 删除 `SimpleProjectionRepository` 中 `wrapper.last("LIMIT ...")` 逻辑
+2) 引入真实 count 查询
+   - `ProjectionMappedStatementFactory` 新增动态 count statement 注册
+   - `ProjectionQueryExecutor` 分页路径改为 `count + RowBounds`，不再使用首屏 total 兜底
+3) 分页断言收紧
+   - 分页测试 `total` 由“>=1”改为精确值 `2`
+4) 回归结果
+   - `mvn -pl platform-data-mybatis-plus test` 通过（Tests run: 4）
+   - `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 3/3 SUCCESS）
+
+缓存治理（2026-02-27）：
+1) ByteBuddy Mapper 缓存结构优化
+   - 由单层强引用 `ConcurrentMap<String, Object>` 调整为：
+     `WeakHashMap<ClassLoader, ConcurrentMap<String, WeakReference<Object>>>`
+   - 实现按 ClassLoader 分段缓存，避免热加载场景对旧 ClassLoader 的强引用
+   - Mapper 实例改为弱引用，降低长期堆占用风险
+2) 并发命中策略
+   - 保留快路径读取，段内同步二次检查，避免重复生成
+3) 新增缓存行为测试
+   - `shouldReuseCachedByteBuddyMapperInstance` 覆盖同键复用
+4) 回归结果
+   - `mvn -pl platform-data-mybatis-plus test` 通过（Tests run: 5）
+   - `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 3/3 SUCCESS）
+
+签名前置校验（2026-02-27）：
+1) 在 create 阶段新增 Mapper 方法签名校验
+   - 校验 `findByQuery` 方法签名的返回类型与参数结构
+   - 校验 `findByQuery` 方法签名是否属于受支持组合
+   - 对不支持方法在 create 时直接抛出异常（避免运行期才失败）
+2) 新增坏签名测试接口
+   - `BadProjectionMapperSignatureTest`（PAGE 返回类型错误）
+   - `BadProjectionMapperMissingProjectionTypeTest`（LIST 缺失 projectionType）
+3) 测试结果
+   - `mvn -pl platform-data-mybatis-plus test` 通过（Tests run: 6）
+   - `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 3/3 SUCCESS）
+
+签名前置校验补充（2026-02-27）：
+1) 新增边界坏签名覆盖
+   - `BadProjectionPageParamSignatureTest`：`findByQuery` 分页形态下第二参数不是 `Page`
+   - `BadProjectionFindByQuerySignatureTest`：`findByQuery` 缺失 `Class` 投影参数
+2) 集成测试补充断言
+   - `shouldValidatePageSecondArgumentAtCreateStage`
+   - `shouldValidateFindByQuerySignatureAtCreateStage`
+3) 验证结果
+   - `ProjectionIntegrationTest` 通过（Tests run: 9, failed: 0）
+
+优化补充（2026-02-27）：
+1) 分页偏移量溢出保护
+   - `ProjectionQueryExecutor` 增加 RowBounds 入参边界校验
+   - 当 `offset` 或 `size` 超过 `Integer.MAX_VALUE` 时快速失败并抛出明确异常
+2) ByteBuddy 缓存主动清理
+   - `ProjectionMapperByteBuddyFactory` 在创建路径增加失效条目清理
+   - 清理已失效弱引用与空 ClassLoader 分段，降低长期 key 堆积风险
+3) 新增回归测试
+   - `ProjectionIntegrationTest#shouldFailFastWhenPageOffsetExceedsRowBoundsRange`
+4) 验证结果
+   - `ProjectionIntegrationTest` 通过（Tests run: 10, failed: 0）
+   - `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 3/3 SUCCESS）
+
+并发稳定性补充（2026-02-27）：
+1) 新增并发创建测试
+   - `ProjectionIntegrationTest#shouldReuseCachedMapperUnderConcurrentCreateCalls`
+   - 多线程同时调用 `ProjectionMapperByteBuddyFactory#create`，验证同键命中同一实例
+2) 验证结果
+   - `ProjectionIntegrationTest` 通过（Tests run: 10, failed: 0）
+   - `mvn -pl platform-data-mybatis-plus -am test` 通过（Tests run: 10, Reactor 3/3 SUCCESS）
+
+签名规则收紧（2026-02-27）：
+1) `findByQuery` 首参数校验增强
+   - 要求第一个参数必须是 query 对象，禁止 `Page/List/Class` 作为首参数
+   - 对非法参数顺序在 create 阶段直接失败
+2) 新增坏签名测试
+   - `BadProjectionFindByQueryOrderSignatureTest`（首参数为 `Page`）
+   - `ProjectionIntegrationTest#shouldValidateFindByQueryParameterOrderAtCreateStage`
+3) 验证结果
+   - `ProjectionIntegrationTest` 通过（Tests run: 11, failed: 0）
+   - `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 3/3 SUCCESS）
+
+签名错误信息增强（2026-02-27）：
+1) `findByQuery` 校验错误细化
+   - 按“参数个数、首参数类型、返回类型、参数组合”输出具体失败原因
+   - 保持 create 阶段失败策略不变，定位信息更明确
+2) 测试断言更新
+   - 将 `findByQuery` 相关坏签名测试断言调整为具体原因文案
+3) 验证结果
+   - `ProjectionIntegrationTest` 通过（Tests run: 11, failed: 0）
+   - `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 3/3 SUCCESS）
+
+projectionType 参数化支持（2026-02-27）：
+1) 新增参数注解
+   - `ProjectionType`（PARAMETER 级注解），支持 `@ProjectionType(XXXView.class) Class<T> projectionType`
+2) 解析与校验增强
+   - `ProjectionMapperByteBuddyFactory` 支持从 `@ProjectionType` 参数解析 projection 类型
+   - 对 `@ProjectionType` 非 `Class` 参数、多重标注等场景增加 create 阶段校验
+3) 测试接口改造
+   - `TestUserProjectionMapperTest` 改为参数式 projectionType
+   - `BadProjectionPageParamSignatureTest` 同步改为参数式写法
+4) 验证结果
+   - `ProjectionIntegrationTest` 通过（Tests run: 11, failed: 0）
+   - `mvn -pl platform-data-mybatis-plus -am test` 通过（Reactor 3/3 SUCCESS）
+
+fields 识别第一阶段（2026-02-27）：
+1) 保持 `ProjectionType` 文件不变
+   - 继续沿用 `PARAMETER_NAME = "fileds"`，并在运行时兼容 `fields`
+2) 增加 fields 参数识别链路
+   - `ProjectionMapperByteBuddyFactory` 支持从方法参数解析字段集合（`String`/`String[]` + CSV）
+   - 统一 `findByQuery` 调用分派透传 fields 到 `ProjectionRepository`
+3) 元数据与动态 SQL 隔离
+   - `ProjectionMetadataResolver` 支持按 selectedFields 解析与校验（含 leaf 匹配）
+   - `ProjectionMetadata` 增加 `selectionKey`
+   - `ProjectionMappedStatementFactory` / `ProjectionResultMapRegistry` 按 `selectionKey` 隔离 statementId/resultMapId
+4) 测试覆盖
+   - `ProjectionIntegrationTest#shouldSupportProjectionFieldsMode`
+   - `TestUserProjectionMapperTest` 增加 `findByQuery + projectionType + fileds(fields)` 签名
+5) 验证结果
+   - `runTests` 通过（13 passed, 0 failed）
+   - `mvn -pl platform-data-mybatis-plus -am test -q` 通过（exit code 0）
+
+统一接口投影入口（2026-02-27）：
+1) 统一调用协议
+   - ByteBuddy Mapper 仅支持 `findByQuery` 方法名
+   - SDK 调用：传入 `Class<? extends interface>` 作为 `projectionType`
+   - Feign 调用：通过 `fields` 参数控制返回字段子集
+2) 清理旧入口
+   - 移除旧注解式方法分派定义文件
+   - 测试接口与集成测试改为统一 `findByQuery` 签名
+3) 验证结果
+   - `ProjectionIntegrationTest` 通过（Tests run: 15, failed: 0）
+   - `mvn -pl platform-data-mybatis-plus -am test -q` 通过（exit code 0）

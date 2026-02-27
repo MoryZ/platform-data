@@ -1,0 +1,6 @@
+CREATE TABLE test_user (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  username VARCHAR(64) NOT NULL,
+  is_enabled BOOLEAN NOT NULL,
+  status INT NOT NULL
+);

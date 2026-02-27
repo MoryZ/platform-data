@@ -17,5 +17,5 @@ import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 @Documented
 @Inherited
 @ImportAutoConfiguration
-public @interface AutoConfigurationDataMyBatis {
+public @interface AutoConfigureDataMyBatis {
 }

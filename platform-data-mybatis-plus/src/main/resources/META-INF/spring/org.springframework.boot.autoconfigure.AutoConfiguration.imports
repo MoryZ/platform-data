@@ -1,1 +1,2 @@
 com.old.silence.data.commons.autoconfigure.MybatisPlusConfig
+com.old.silence.data.mybatis.projection.ProjectionQueryAutoConfiguration

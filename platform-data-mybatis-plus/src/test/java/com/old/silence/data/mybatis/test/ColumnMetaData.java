@@ -1,6 +1,8 @@
 package com.old.silence.data.mybatis.test;
 
 /**
+ * Column metadata from database
+ * 
  * @author moryzang
  */
 public class ColumnMetaData {

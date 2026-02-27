@@ -1,82 +1,77 @@
 package com.old.silence.data.mybatis.test;
 
-import java.lang.reflect.UndeclaredThrowableException;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
+import com.baomidou.mybatisplus.core.metadata.TableInfo;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+
+import javax.sql.DataSource;
+import java.sql.*;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import javax.sql.DataSource;
-
-import org.springframework.jdbc.support.JdbcUtils;
-import org.springframework.jdbc.support.MetaDataAccessException;
-import org.springframework.test.context.jdbc.Sql;
 
 /**
+ * Provider for column metadata from database
+ * Adapted for MyBatis Plus
+ * 
  * @author moryzang
  */
 class ColumnMetaDataProvider {
-    private static final ConcurrentMap<JdbcPersistentEntity<?>, Map<SqlIdentifier, ColumnMetaData>> cache = new ConcurrentHashMap<>();
+    
+    private static final ConcurrentMap<Class<?>, Map<String, ColumnMetaData>> cache = new ConcurrentHashMap<>();
 
-    static ColumnMetaData getColumnMetaData(DataSource dataSource, JdbcPersistentPropertyPathExtension propertyPath) {
-        var columnMetaDatas = getColumnMetaDatas(dataSource, propertyPath.getTableOwningEntity());
-        return columnMetaDatas.getColumnName(propertyPath.getColumnName());
+    /**
+     * Get column metadata for specified entity type and column name
+     * 
+     * @param dataSource data source
+     * @param entityType entity type
+     * @param columnName column name (database column name)
+     * @return column metadata
+     */
+    static ColumnMetaData getColumnMetaData(DataSource dataSource, Class<?> entityType, String columnName) {
+        Map<String, ColumnMetaData> columnMetaDatas = getColumnMetaDatas(dataSource, entityType);
+        return columnMetaDatas.get(columnName);
     }
 
-    private static Map<SqlIdentifier, ColumnMetaData> getColumnMetaDatas(DataSource dataSource,
-                                                                         JdbcPersistentEntity<?> persistentEntity) {
-        return cache.computeIfAbsent(persistentEntity, entity -> loadColumnMetaDatas(dataSource, entity));
+    private static Map<String, ColumnMetaData> getColumnMetaDatas(DataSource dataSource, Class<?> entityType) {
+        return cache.computeIfAbsent(entityType, type -> loadColumnMetaDatas(dataSource, type));
     }
 
-    private static Map<SqlIdentifier, ColumnMetaData> loadColumnMetaDatas(DataSource dataSource, JdbcPersistentEntity<?> entity) {
+    private static Map<String, ColumnMetaData> loadColumnMetaDatas(DataSource dataSource, Class<?> entityType) {
+        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
+        if (tableInfo == null) {
+            throw new IllegalArgumentException("No TableInfo found for entity type: " + entityType);
+        }
 
-        try {
-            var tableNameToUse = JdbcUtils.extractDatabaseMetaData(dataSource,
-                    dataSourceMetaData -> tableNameToUse(entity.getTableName().getReference(), dataSourceMetaData));
-            var sql = "SELECT * FROM " + tableNameToUse + " WHERE 1 <> 0";
-            var connection = dataSource.getConnection();
-            var statement = connection.createStatement();
-            var columns = statement.executeQuery(sql);
-            try (connection; statement; columns){
+        String tableName = tableInfo.getTableName();
+        String sql = "SELECT * FROM " + tableName + " WHERE 1 <> 1";
 
-                if (columns == null) {
-                    return Collections.emptyMap();
-                }
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
 
-                var propertyColumnMetaDataMap = new HashMap<SqlIdentifier, ColumnMetaData>();
+            Map<String, ColumnMetaData> metaDataMap = new HashMap<>();
+            ResultSetMetaData metaData = resultSet.getMetaData();
 
-                var metaData = columns.getMetaData();
-                for (var i = 0; i < metaData.getColumnCount(); i++) {
-
-                    var columnMetaData = new ColumnMetaData(metaData.getColumnName(i), metaData.getColumnType(i),
-                            metaData.getPrecision(i), metaData.getScale(i),
-                            metaData.isNullable(i) == ResultSetMetaData.columnNullable, metaData.isSigned(i));
-
-                    var propertyPath = entity.findRequiredPropertyPathColumn(columnMetaData.getColumnName());
-
-                    propertyColumnMetaDataMap.put(propertyPath.getColumnName(), columnMetaData);
-                }
-
-                return propertyColumnMetaDataMap;
+            for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                String columnName = metaData.getColumnName(i);
+                ColumnMetaData columnMetaData = new ColumnMetaData(
+                    columnName,
+                    metaData.getColumnType(i),
+                    metaData.getPrecision(i),
+                    metaData.getScale(i),
+                    metaData.isNullable(i) == ResultSetMetaData.columnNullable,
+                    metaData.isSigned(i)
+                );
+                
+                metaDataMap.put(columnName, columnMetaData);
             }
 
-        } catch (SQLException | MetaDataAccessException e) {
-            throw new UndeclaredThrowableException(e);
-        }
-    }
+            return Collections.unmodifiableMap(metaDataMap);
 
-    private static String tableNameToUse(String tableName, DatabaseMetaData databaseMetaData) throws SQLException {
-        if (tableName == null) {
-            return null;
-        } else if (databaseMetaData.storesUpperCaseIdentifiers()) {
-            return tableName.toUpperCase();
-        } else if (databaseMetaData.storesLowerCaseIdentifiers()) {
-            return tableName.toLowerCase();
-        } else  {
-            return tableName;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to load column metadata for table: " + tableName, e);
         }
     }
 }

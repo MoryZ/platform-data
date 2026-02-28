@@ -14,7 +14,7 @@ public class ProjectionRepositoryFactory {
         this.queryExecutor = queryExecutor;
     }
 
-    public <T> ProjectionRepository<T> create(Class<T> entityType) {
+    public <T, ID> ProjectionRepository<T, ID> create(Class<T> entityType) {
         return new SimpleProjectionRepository<>(entityType, metadataResolver, queryExecutor);
     }
 }

@@ -1,5 +1,6 @@
 package com.old.silence.data.mybatis.projection;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -45,15 +46,19 @@ class ProjectionIntegrationTest {
     @Autowired
     private ProjectionMapperByteBuddyFactory mapperByteBuddyFactory;
 
+    @Autowired
+    private ProjectionQueryOperations projectionQueryOperations;
+
+    @Autowired
+    private SimpleProjectionQueryRepositoryFactory simpleProjectionQueryRepositoryFactory;
+
     @Test
     void shouldResolveTableFieldMappingAndEnumHandler() {
-        ProjectionRepository<TestUser> repository = repositoryFactory.create(TestUser.class);
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
 
-        TestUserQuery query = new TestUserQuery();
-        query.setUsernameLike("user");
-        query.setEnabled(true);
+        QueryWrapper<TestUser> queryWrapper = createEnabledUserQueryWrapper();
 
-        List<TestUserProjection> result = repository.findByQuery(query, TestUserProjection.class);
+        List<TestUserProjection> result = repository.findByQuery(queryWrapper, TestUserProjection.class);
 
         assertThat(result).isNotEmpty();
         TestUserProjection projection = result.getFirst();
@@ -67,16 +72,14 @@ class ProjectionIntegrationTest {
 
     @Test
     void shouldSupportPaginationAndOrdering() {
-        ProjectionRepository<TestUser> repository = repositoryFactory.create(TestUser.class);
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
 
-        TestUserQuery query = new TestUserQuery();
-        query.setUsernameLike("user");
-        query.setEnabled(true);
+        QueryWrapper<TestUser> queryWrapper = createEnabledUserQueryWrapper();
 
         Page<?> page = new Page<>(1, 1);
-        List<OrderItem> orderItems = List.of(OrderItem.desc("id"));
+        page.addOrder(OrderItem.desc("id"));
 
-        IPage<TestUserProjection> result = repository.findByQuery(query, page, orderItems, TestUserProjection.class);
+        IPage<TestUserProjection> result = repository.findByQuery(queryWrapper, page, TestUserProjection.class);
 
         assertThat(result.getRecords()).hasSize(1);
         assertThat(result.getTotal()).isEqualTo(2);
@@ -84,15 +87,13 @@ class ProjectionIntegrationTest {
 
     @Test
     void shouldFailFastWhenPageOffsetExceedsRowBoundsRange() {
-        ProjectionRepository<TestUser> repository = repositoryFactory.create(TestUser.class);
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
 
-        TestUserQuery query = new TestUserQuery();
-        query.setUsernameLike("user");
-        query.setEnabled(true);
+        QueryWrapper<TestUser> queryWrapper = createEnabledUserQueryWrapper();
 
         Page<?> page = new Page<>(2_147_483_648L, 2L);
 
-        assertThatThrownBy(() -> repository.findByQuery(query, page, TestUserProjection.class))
+        assertThatThrownBy(() -> repository.findByQuery(queryWrapper, page, TestUserProjection.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Page offset exceeds RowBounds integer range");
     }
@@ -101,72 +102,175 @@ class ProjectionIntegrationTest {
     void shouldSupportByteBuddyProjectionMapper() {
         TestUserProjectionMapperTest mapper = mapperByteBuddyFactory.create(TestUserProjectionMapperTest.class, TestUser.class);
 
-        TestUserQuery query = new TestUserQuery();
-        query.setUsernameLike("user");
-        query.setEnabled(true);
+        QueryWrapper<TestUser> queryWrapper = createEnabledUserQueryWrapper();
 
-        List<TestUserProjectionView> list = mapper.findByQuery(query, TestUserProjectionView.class);
+        List<TestUserProjectionView> list = mapper.findByQuery(queryWrapper, TestUserProjectionView.class);
         assertThat(list).isNotEmpty();
 
-        IPage<TestUserProjectionView> page = mapper.findByQuery(query, new Page<>(1, 1), List.of(OrderItem.desc("id")),
+        Page<?> pageRequest = new Page<>(1, 1);
+        pageRequest.addOrder(OrderItem.desc("id"));
+        IPage<TestUserProjectionView> page = mapper.findByQuery(queryWrapper, pageRequest, TestUserProjectionView.class);
+        assertThat(page.getRecords()).hasSize(1);
+    }
+
+    @Test
+    void shouldSupportSimpleJdbcStyleProjectionRepository() {
+        SimpleProjectionQueryRepository<TestUser> repository =
+            new SimpleProjectionQueryRepository<>(projectionQueryOperations, TestUser.class);
+
+        QueryWrapper<TestUser> queryWrapper = createEnabledUserQueryWrapper();
+
+        List<TestUserProjectionView> list = repository.findByQuery(queryWrapper, TestUserProjectionView.class);
+        assertThat(list).isNotEmpty();
+        assertThat(list.getFirst().getUsername()).isNotBlank();
+
+        Page<?> pageRequest = new Page<>(1, 1);
+        pageRequest.addOrder(OrderItem.desc("id"));
+        IPage<TestUserProjectionView> page = repository.findByQuery(queryWrapper,
+            pageRequest,
             TestUserProjectionView.class);
+
         assertThat(page.getRecords()).hasSize(1);
+        assertThat(page.getRecords().getFirst().getStatus()).isEqualTo(TestUserStatus.ACTIVE);
     }
 
     @Test
-    void shouldSupportProjectionFieldsMode() {
-        TestUserProjectionMapperTest mapper = mapperByteBuddyFactory.create(TestUserProjectionMapperTest.class, TestUser.class);
+    void shouldSupportSimpleJdbcStyleProjectionRepositoryFactory() {
+        SimpleProjectionQueryRepository<TestUser> repository =
+                simpleProjectionQueryRepositoryFactory.create(TestUser.class);
 
-        TestUserQuery query = new TestUserQuery();
-        query.setUsernameLike("user");
-        query.setEnabled(true);
+        QueryWrapper<TestUser> queryWrapper = createEnabledUserQueryWrapper();
+        List<TestUserProjectionView> list = repository.findByQuery(queryWrapper,
+            TestUserProjectionView.class);
 
-        List<TestUserProjectionView> list = mapper.findByQuery(query, TestUserProjectionView.class, "username,enabled");
         assertThat(list).isNotEmpty();
-        TestUserProjectionView projection = list.getFirst();
-        assertThat(projection.getUsername()).isNotBlank();
-        assertThat(projection.getEnabled()).isNotNull();
-        assertThat(projection.getStatus()).isNull();
-
-        IPage<TestUserProjectionView> page = mapper.findByQuery(query, new Page<>(1, 1), List.of(OrderItem.desc("id")),
-            TestUserProjectionView.class, "username,enabled");
-        assertThat(page.getRecords()).hasSize(1);
-        assertThat(page.getRecords().getFirst().getStatus()).isNull();
+        assertThat(list.getFirst().getUsername()).isNotBlank();
     }
 
     @Test
-    void shouldSupportProjectionFieldsArrayMode() {
-        TestUserProjectionMapperTest mapper = mapperByteBuddyFactory.create(TestUserProjectionMapperTest.class, TestUser.class);
+    void shouldSupportCountAndExistsByQuery() {
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
+        QueryWrapper<TestUser> enabledUsers = createEnabledUserQueryWrapper();
 
-        TestUserQuery query = new TestUserQuery();
-        query.setUsernameLike("user");
-        query.setEnabled(true);
+        long count = repository.countByQuery(enabledUsers);
+        boolean exists = repository.existsByQuery(enabledUsers);
 
-        List<TestUserProjectionView> list = mapper.findByQuery(query, TestUserProjectionView.class,
-                new String[]{"username", "enabled"});
-        assertThat(list).isNotEmpty();
+        assertThat(count).isEqualTo(2L);
+        assertThat(exists).isTrue();
 
-        TestUserProjectionView projection = list.getFirst();
-        assertThat(projection.getUsername()).isNotBlank();
-        assertThat(projection.getEnabled()).isNotNull();
-        assertThat(projection.getStatus()).isNull();
+        QueryWrapper<TestUser> notExistsQuery = new QueryWrapper<TestUser>()
+                .like("username", "not-exists-user");
+        assertThat(repository.countByQuery(notExistsQuery)).isZero();
+        assertThat(repository.existsByQuery(notExistsQuery)).isFalse();
+    }
 
-        IPage<TestUserProjectionView> page = mapper.findByQuery(query, new Page<>(1, 1),
-                List.of(OrderItem.desc("id")), TestUserProjectionView.class,
-                new String[]{"username", "enabled"});
-        assertThat(page.getRecords()).hasSize(1);
-        assertThat(page.getRecords().getFirst().getStatus()).isNull();
+    @Test
+    void shouldSupportSimpleJdbcStyleCountAndExistsByQuery() {
+        SimpleProjectionQueryRepository<TestUser> repository =
+                simpleProjectionQueryRepositoryFactory.create(TestUser.class);
+        QueryWrapper<TestUser> enabledUsers = createEnabledUserQueryWrapper();
+
+        assertThat(repository.countByQuery(enabledUsers)).isEqualTo(2L);
+        assertThat(repository.existsByQuery(enabledUsers)).isTrue();
+    }
+
+    @Test
+    void shouldSupportFindById() {
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
+
+        java.util.Optional<TestUser> found = repository.findById(1L);
+        assertThat(found).isPresent();
+        assertThat(found.orElseThrow().getId()).isEqualTo(1L);
+
+        java.util.Optional<TestUser> notFound = repository.findById(999999L);
+        assertThat(notFound).isEmpty();
+
+        java.util.Optional<TestUserProjectionView> projection = repository.findById(1L, TestUserProjectionView.class);
+        assertThat(projection).isPresent();
+        assertThat(projection.orElseThrow().getUsername()).isNotBlank();
+
+        java.util.Optional<TestUserProjectionView> projectionNotFound = repository.findById(999999L, TestUserProjectionView.class);
+        assertThat(projectionNotFound).isEmpty();
+    }
+
+    @Test
+    void shouldSupportSimpleJdbcStyleFindById() {
+        SimpleProjectionQueryRepository<TestUser> repository =
+                simpleProjectionQueryRepositoryFactory.create(TestUser.class);
+
+        java.util.Optional<TestUser> found = repository.findById(1L);
+        assertThat(found).isPresent();
+        assertThat(found.orElseThrow().getId()).isEqualTo(1L);
+
+        java.util.Optional<TestUser> notFound = repository.findById(999999L);
+        assertThat(notFound).isEmpty();
+
+        java.util.Optional<TestUserProjectionView> projection = repository.findById(1L, TestUserProjectionView.class);
+        assertThat(projection).isPresent();
+        assertThat(projection.orElseThrow().getUsername()).isNotBlank();
+
+        java.util.Optional<TestUserProjectionView> projectionNotFound = repository.findById(999999L, TestUserProjectionView.class);
+        assertThat(projectionNotFound).isEmpty();
+    }
+
+    @Test
+    void shouldSupportCreateUpdateDeleteByRepository() {
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
+
+        TestUser entity = new TestUser();
+        entity.setUsername("user_crud_repo");
+        entity.setEnabled(true);
+        entity.setStatus(TestUserStatus.ACTIVE);
+
+        int created = repository.create(entity);
+        assertThat(created).isEqualTo(1);
+        assertThat(entity.getId()).isNotNull();
+
+        entity.setUsername("user_crud_repo_updated");
+        int updated = repository.updateById(entity);
+        assertThat(updated).isEqualTo(1);
+
+        QueryWrapper<TestUser> byId = new QueryWrapper<TestUser>().eq("id", entity.getId());
+        List<TestUserProjectionView> records = repository.findByQuery(byId, TestUserProjectionView.class);
+        assertThat(records).hasSize(1);
+        assertThat(records.getFirst().getUsername()).isEqualTo("user_crud_repo_updated");
+
+        int deleted = repository.deleteById(entity.getId());
+        assertThat(deleted).isEqualTo(1);
+        assertThat(repository.existsByQuery(byId)).isFalse();
+    }
+
+    @Test
+    void shouldSupportCreateUpdateDeleteBySimpleJdbcStyleRepository() {
+        SimpleProjectionQueryRepository<TestUser> repository =
+                simpleProjectionQueryRepositoryFactory.create(TestUser.class);
+
+        TestUser entity = new TestUser();
+        entity.setUsername("user_crud_simple");
+        entity.setEnabled(false);
+        entity.setStatus(TestUserStatus.DISABLED);
+
+        assertThat(repository.create(entity)).isEqualTo(1);
+        assertThat(entity.getId()).isNotNull();
+
+        entity.setEnabled(true);
+        entity.setStatus(TestUserStatus.ACTIVE);
+        assertThat(repository.updateById(entity)).isEqualTo(1);
+
+        QueryWrapper<TestUser> byId = new QueryWrapper<TestUser>().eq("id", entity.getId());
+        assertThat(repository.existsByQuery(byId)).isTrue();
+
+        assertThat(repository.deleteByQuery(byId)).isEqualTo(1);
+        assertThat(repository.existsByQuery(byId)).isFalse();
     }
 
     @Test
     void shouldSupportInterfaceProjection() {
-        ProjectionRepository<TestUser> repository = repositoryFactory.create(TestUser.class);
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
 
-        TestUserQuery query = new TestUserQuery();
-        query.setUsernameLike("user");
-        query.setEnabled(true);
+        QueryWrapper<TestUser> queryWrapper = createEnabledUserQueryWrapper();
 
-        List<TestUserProjectionView> result = repository.findByQuery(query, TestUserProjectionView.class);
+        List<TestUserProjectionView> result = repository.findByQuery(queryWrapper, TestUserProjectionView.class);
         assertThat(result).isNotEmpty();
 
         TestUserProjectionView projection = result.getFirst();
@@ -176,28 +280,10 @@ class ProjectionIntegrationTest {
     }
 
     @Test
-    void shouldSupportInterfaceProjectionFieldsMode() {
-        ProjectionRepository<TestUser> repository = repositoryFactory.create(TestUser.class);
-
-        TestUserQuery query = new TestUserQuery();
-        query.setUsernameLike("user");
-        query.setEnabled(true);
-
-        List<TestUserProjectionView> result = repository.findByQuery(query, TestUserProjectionView.class,
-                List.of("username", "enabled"));
-        assertThat(result).isNotEmpty();
-
-        TestUserProjectionView projection = result.getFirst();
-        assertThat(projection.getUsername()).isNotBlank();
-        assertThat(projection.getEnabled()).isNotNull();
-        assertThat(projection.getStatus()).isNull();
-    }
-
-    @Test
     void shouldThrowWhenProjectionTypeMissingInByteBuddyMapper() {
         assertThatThrownBy(() -> mapperByteBuddyFactory.create(BadProjectionMapperMissingProjectionTypeTest.class, TestUser.class))
                 .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("parameter count must be 2 to 5");
+            .hasMessageContaining("parameter count must be 2 or 3");
     }
 
     @Test
@@ -245,28 +331,35 @@ class ProjectionIntegrationTest {
     void shouldValidateMapperSignatureAtCreateStage() {
         assertThatThrownBy(() -> mapperByteBuddyFactory.create(BadProjectionMapperSignatureTest.class, TestUser.class))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("(query, Page, Class)");
+                .hasMessageContaining("(queryWrapper, Page, Class)");
     }
 
     @Test
     void shouldValidatePageSecondArgumentAtCreateStage() {
         assertThatThrownBy(() -> mapperByteBuddyFactory.create(BadProjectionPageParamSignatureTest.class, TestUser.class))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("for 4 parameters");
+                .hasMessageContaining("parameter count must be 2 or 3");
     }
 
     @Test
     void shouldValidateFindByQuerySignatureAtCreateStage() {
         assertThatThrownBy(() -> mapperByteBuddyFactory.create(BadProjectionFindByQuerySignatureTest.class, TestUser.class))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("(query, Class)");
+                .hasMessageContaining("(queryWrapper, Class)");
     }
 
     @Test
     void shouldValidateFindByQueryParameterOrderAtCreateStage() {
         assertThatThrownBy(() -> mapperByteBuddyFactory.create(BadProjectionFindByQueryOrderSignatureTest.class, TestUser.class))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("first argument must be query object");
+                .hasMessageContaining("first argument must be QueryWrapper/LambdaQueryWrapper");
+    }
+
+    private QueryWrapper<TestUser> createEnabledUserQueryWrapper() {
+        QueryWrapper<TestUser> queryWrapper = new QueryWrapper<>();
+        queryWrapper.like("username", "user");
+        queryWrapper.eq("is_enabled", true);
+        return queryWrapper;
     }
 
     @TestConfiguration
@@ -291,6 +384,17 @@ class ProjectionIntegrationTest {
         ProjectionRepositoryFactory projectionRepositoryFactory(ProjectionMetadataResolver resolver,
                                                                ProjectionQueryExecutor executor) {
             return new ProjectionRepositoryFactory(resolver, executor);
+        }
+
+        @Bean
+        ProjectionQueryOperations projectionQueryOperations(ProjectionRepositoryFactory projectionRepositoryFactory) {
+            return new ProjectionQueryOperations(projectionRepositoryFactory);
+        }
+
+        @Bean
+        SimpleProjectionQueryRepositoryFactory simpleProjectionQueryRepositoryFactory(
+                ProjectionQueryOperations projectionQueryOperations) {
+            return new SimpleProjectionQueryRepositoryFactory(projectionQueryOperations);
         }
 
         @Bean

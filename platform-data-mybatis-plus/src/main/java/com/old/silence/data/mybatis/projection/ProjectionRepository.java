@@ -1,30 +1,35 @@
 package com.old.silence.data.mybatis.projection;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
+import java.util.Optional;
 import java.util.List;
 
 /**
  * Projection repository API for MyBatis Plus.
  */
-public interface ProjectionRepository<T> {
+public interface ProjectionRepository<T, ID> {
 
-    <P> List<P> findByQuery(Object query, Class<P> projectionType);
+    Optional<T> findById(ID id);
 
-    <P> List<P> findByQuery(Object query, Class<P> projectionType, List<String> fields);
+    <P> Optional<P> findById(ID id, Class<P> projectionType);
 
-    <P> List<P> findByQuery(Object query, List<OrderItem> orderItems, Class<P> projectionType);
+    <P> List<P> findByQuery(Wrapper<T> queryWrapper, Class<P> projectionType);
 
-    <P> List<P> findByQuery(Object query, List<OrderItem> orderItems, Class<P> projectionType, List<String> fields);
+    <P> IPage<P> findByQuery(Wrapper<T> queryWrapper, Page<?> page, Class<P> projectionType);
 
-    <P> IPage<P> findByQuery(Object query, Page<?> page, Class<P> projectionType);
+    int create(T entity);
 
-    <P> IPage<P> findByQuery(Object query, Page<?> page, Class<P> projectionType, List<String> fields);
+    int updateById(T entity);
 
-    <P> IPage<P> findByQuery(Object query, Page<?> page, List<OrderItem> orderItems, Class<P> projectionType);
+    int deleteById(ID id);
 
-    <P> IPage<P> findByQuery(Object query, Page<?> page, List<OrderItem> orderItems, Class<P> projectionType,
-                             List<String> fields);
+    int deleteByQuery(Wrapper<T> queryWrapper);
+
+    long countByQuery(Wrapper<T> queryWrapper);
+
+    boolean existsByQuery(Wrapper<T> queryWrapper);
+
 }

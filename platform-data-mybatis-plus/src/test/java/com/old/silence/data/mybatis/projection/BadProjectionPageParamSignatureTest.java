@@ -1,5 +1,6 @@
 package com.old.silence.data.mybatis.projection;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -11,7 +12,7 @@ import java.util.List;
  */
 public interface BadProjectionPageParamSignatureTest {
 
-    IPage<TestUserProjection> findByQuery(TestUserQuery query,
+    IPage<TestUserProjection> findByQuery(Wrapper<TestUser> queryWrapper,
                                           List<OrderItem> orderItems,
                                           Page<?> page,
                                           Class<TestUserProjection> projectionType);

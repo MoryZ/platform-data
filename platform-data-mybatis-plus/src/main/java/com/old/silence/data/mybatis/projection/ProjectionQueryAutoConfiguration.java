@@ -35,6 +35,17 @@ public class ProjectionQueryAutoConfiguration {
     }
 
     @Bean
+    public ProjectionQueryOperations projectionQueryOperations(ProjectionRepositoryFactory projectionRepositoryFactory) {
+        return new ProjectionQueryOperations(projectionRepositoryFactory);
+    }
+
+    @Bean
+    public SimpleProjectionQueryRepositoryFactory simpleProjectionQueryRepositoryFactory(
+            ProjectionQueryOperations projectionQueryOperations) {
+        return new SimpleProjectionQueryRepositoryFactory(projectionQueryOperations);
+    }
+
+    @Bean
     public ProjectionMapperByteBuddyFactory projectionMapperByteBuddyFactory(
             ProjectionRepositoryFactory projectionRepositoryFactory) {
         return new ProjectionMapperByteBuddyFactory(projectionRepositoryFactory);

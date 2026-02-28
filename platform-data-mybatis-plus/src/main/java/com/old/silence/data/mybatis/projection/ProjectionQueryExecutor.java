@@ -1,6 +1,9 @@
 package com.old.silence.data.mybatis.projection;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.metadata.TableFieldInfo;
+import com.baomidou.mybatisplus.core.metadata.TableInfo;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Constants;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -11,6 +14,7 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Execute projection queries using dynamically registered MappedStatements.
@@ -26,7 +30,7 @@ public class ProjectionQueryExecutor {
         this.statementFactory = new ProjectionMappedStatementFactory(resultMapRegistry);
     }
 
-    public <T, P> List<P> select(QueryWrapper<T> wrapper, ProjectionMetadata metadata) {
+    public <T, P> List<P> select(Wrapper<T> wrapper, ProjectionMetadata metadata) {
         String statementId = statementFactory.ensureStatement(sqlSessionFactory.getConfiguration(), metadata);
         Map<String, Object> params = new HashMap<>();
         params.put(Constants.WRAPPER, wrapper);
@@ -37,8 +41,8 @@ public class ProjectionQueryExecutor {
     }
 
     public <T, P> IPage<P> selectPage(Page<?> page,
-                                      QueryWrapper<T> wrapper,
-                                      QueryWrapper<T> countWrapper,
+                                      Wrapper<T> wrapper,
+                                      Wrapper<T> countWrapper,
                                       ProjectionMetadata metadata) {
         String statementId = statementFactory.ensureStatement(sqlSessionFactory.getConfiguration(), metadata);
         String countStatementId = statementFactory.ensureCountStatement(sqlSessionFactory.getConfiguration(), metadata);
@@ -66,7 +70,102 @@ public class ProjectionQueryExecutor {
         }
     }
 
-    public <T> List<Map<String, Object>> selectMaps(QueryWrapper<T> wrapper, ProjectionMetadata metadata) {
+    public <T> long selectCount(Wrapper<T> wrapper, Class<T> entityType) {
+        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
+        if (tableInfo == null) {
+            throw new IllegalArgumentException("No TableInfo found for entity type: " + entityType.getName());
+        }
+
+        ProjectionMetadata countMetadata = new ProjectionMetadata(entityType,
+                entityType,
+                tableInfo.getTableName(),
+                List.of(),
+                "ALL");
+        String countStatementId = statementFactory.ensureCountStatement(sqlSessionFactory.getConfiguration(), countMetadata);
+        Map<String, Object> params = new HashMap<>();
+        params.put(Constants.WRAPPER, wrapper);
+
+        try (SqlSession session = sqlSessionFactory.openSession()) {
+            Long total = session.selectOne(countStatementId, params);
+            return total == null ? 0L : total;
+        }
+    }
+
+    public <T> int insert(T entity, Class<T> entityType) {
+        Objects.requireNonNull(entity, "Entity must not be null");
+
+        TableInfo tableInfo = getRequiredTableInfo(entityType);
+        String statementId = statementFactory.ensureInsertStatement(sqlSessionFactory.getConfiguration(), entityType, tableInfo);
+
+        try (SqlSession session = sqlSessionFactory.openSession()) {
+            return session.insert(statementId, entity);
+        }
+    }
+
+    public <T> int updateById(T entity, Class<T> entityType) {
+        Objects.requireNonNull(entity, "Entity must not be null");
+
+        TableInfo tableInfo = getRequiredTableInfo(entityType);
+        org.springframework.beans.BeanWrapperImpl beanWrapper = new org.springframework.beans.BeanWrapperImpl(entity);
+        Object keyValue = beanWrapper.getPropertyValue(tableInfo.getKeyProperty());
+        if (keyValue == null) {
+            throw new IllegalArgumentException("Entity id must not be null for updateById");
+        }
+
+        boolean hasAnyFieldToUpdate = tableInfo.getFieldList().stream()
+                .map(TableFieldInfo::getProperty)
+            .anyMatch(property -> beanWrapper.getPropertyValue(property) != null);
+        if (!hasAnyFieldToUpdate) {
+            return 0;
+        }
+
+        String statementId = statementFactory.ensureUpdateByIdStatement(sqlSessionFactory.getConfiguration(), entityType, tableInfo);
+
+        try (SqlSession session = sqlSessionFactory.openSession()) {
+            return session.update(statementId, entity);
+        }
+    }
+
+    public <T, ID> int deleteById(ID id, Class<T> entityType) {
+        Objects.requireNonNull(id, "Id must not be null");
+
+        TableInfo tableInfo = getRequiredTableInfo(entityType);
+        String statementId = statementFactory.ensureDeleteByIdStatement(sqlSessionFactory.getConfiguration(), entityType, tableInfo);
+
+        Map<String, Object> params = new HashMap<>();
+        params.put(tableInfo.getKeyProperty(), id);
+        try (SqlSession session = sqlSessionFactory.openSession()) {
+            return session.delete(statementId, params);
+        }
+    }
+
+    public <T> int deleteByQuery(Wrapper<T> wrapper, Class<T> entityType) {
+        Objects.requireNonNull(wrapper, "Query wrapper must not be null");
+
+        String sqlSegment = wrapper.getCustomSqlSegment();
+        if (sqlSegment == null || sqlSegment.isBlank()) {
+            throw new IllegalArgumentException("deleteByQuery requires non-empty query conditions");
+        }
+
+        TableInfo tableInfo = getRequiredTableInfo(entityType);
+        String statementId = statementFactory.ensureDeleteByQueryStatement(sqlSessionFactory.getConfiguration(), entityType, tableInfo);
+
+        Map<String, Object> params = new HashMap<>();
+        params.put(Constants.WRAPPER, wrapper);
+        try (SqlSession session = sqlSessionFactory.openSession()) {
+            return session.delete(statementId, params);
+        }
+    }
+
+    private <T> TableInfo getRequiredTableInfo(Class<T> entityType) {
+        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
+        if (tableInfo == null) {
+            throw new IllegalArgumentException("No TableInfo found for entity type: " + entityType.getName());
+        }
+        return tableInfo;
+    }
+
+    public <T> List<Map<String, Object>> selectMaps(Wrapper<T> wrapper, ProjectionMetadata metadata) {
         String statementId = statementFactory.ensureMapStatement(sqlSessionFactory.getConfiguration(), metadata);
         Map<String, Object> params = new HashMap<>();
         params.put(Constants.WRAPPER, wrapper);
@@ -77,8 +176,8 @@ public class ProjectionQueryExecutor {
     }
 
     public <T> IPage<Map<String, Object>> selectPageMaps(Page<?> page,
-                                                          QueryWrapper<T> wrapper,
-                                                          QueryWrapper<T> countWrapper,
+                                                          Wrapper<T> wrapper,
+                                                          Wrapper<T> countWrapper,
                                                           ProjectionMetadata metadata) {
         String statementId = statementFactory.ensureMapStatement(sqlSessionFactory.getConfiguration(), metadata);
         String countStatementId = statementFactory.ensureCountStatement(sqlSessionFactory.getConfiguration(), metadata);

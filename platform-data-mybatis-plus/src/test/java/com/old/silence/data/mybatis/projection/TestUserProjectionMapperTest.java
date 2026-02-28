@@ -1,7 +1,7 @@
 package com.old.silence.data.mybatis.projection;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 import java.util.List;
@@ -11,31 +11,10 @@ import java.util.List;
  */
 public interface TestUserProjectionMapperTest {
 
-    List<TestUserProjectionView> findByQuery(TestUserQuery query,
+    List<TestUserProjectionView> findByQuery(Wrapper<TestUser> queryWrapper,
                                              Class<TestUserProjectionView> projectionType);
 
-    IPage<TestUserProjectionView> findByQuery(TestUserQuery query,
+    IPage<TestUserProjectionView> findByQuery(Wrapper<TestUser> queryWrapper,
                                               Page<?> page,
-                                              List<OrderItem> orderItems,
                                               Class<TestUserProjectionView> projectionType);
-
-    List<TestUserProjectionView> findByQuery(TestUserQuery query,
-                                             Class<TestUserProjectionView> projectionType,
-                                             String fields);
-
-    List<TestUserProjectionView> findByQuery(TestUserQuery query,
-                                             Class<TestUserProjectionView> projectionType,
-                                             String[] fields);
-
-    IPage<TestUserProjectionView> findByQuery(TestUserQuery query,
-                                              Page<?> page,
-                                              List<OrderItem> orderItems,
-                                              Class<TestUserProjectionView> projectionType,
-                                              String fields);
-
-    IPage<TestUserProjectionView> findByQuery(TestUserQuery query,
-                                              Page<?> page,
-                                              List<OrderItem> orderItems,
-                                              Class<TestUserProjectionView> projectionType,
-                                              String[] fields);
 }

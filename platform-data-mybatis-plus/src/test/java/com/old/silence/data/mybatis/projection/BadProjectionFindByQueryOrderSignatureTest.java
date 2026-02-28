@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import java.util.List;
 
 /**
- * Invalid mapper contract: findByQuery first argument must be query object, not Page.
+ * Invalid mapper contract: findByQuery first argument must be Wrapper, not Page.
  */
 public interface BadProjectionFindByQueryOrderSignatureTest {
 

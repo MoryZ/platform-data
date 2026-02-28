@@ -253,11 +253,10 @@ SELECT * FROM users WHERE id = 1  -- 查询所有字段后过滤
 ```java
 public interface UserProjectionMapperTest {
 
-    List<UserView> findByQuery(UserQuery query, Class<UserView> projectionType);
+    List<UserView> findByQuery(Wrapper<User> queryWrapper, Class<UserView> projectionType);
 
-    IPage<UserView> findByQuery(UserQuery query,
+    IPage<UserView> findByQuery(Wrapper<User> queryWrapper,
                                 Page<?> page,
-                                List<OrderItem> orderItems,
                                 Class<UserView> projectionType);
 }
 
@@ -267,7 +266,10 @@ private ProjectionMapperByteBuddyFactory mapperFactory;
 @Test
 void testByteBuddyMapper() {
     UserProjectionMapperTest mapper = mapperFactory.create(UserProjectionMapperTest.class, User.class);
-    List<UserView> list = mapper.findByQuery(new UserQuery(), UserView.class);
+    QueryWrapper<User> queryWrapper = new QueryWrapper<User>()
+            .like("username", "tom")
+            .eq("is_enabled", true);
+    List<UserView> list = mapper.findByQuery(queryWrapper, UserView.class);
     assertThat(list).isNotNull();
 }
 ```
@@ -276,41 +278,37 @@ void testByteBuddyMapper() {
 
 1. Mapper 接口建议按测试规范以 `*Test` 结尾。
 2. 统一方法名为 `findByQuery`，通过参数形态区分列表查询与分页查询。
-3. SDK 调用通过 `Class<?> projectionType` 传入 interface 投影类型。
+3. SDK 调用通过 `Class<?> projectionType` 传入投影类型，字段集合由投影定义决定。
 4. 实际执行链路仍复用 `ProjectionRepository`，保持排序/分页与字段映射规则一致。
 
-### class + fields 参数模式（不改 ProjectionType 注解定义）
+## SimpleJdbcRepository 风格用法（无 ByteBuddy）
 
-当你希望“调用时”动态指定投影字段，可以在方法中增加 `fileds`（兼容历史拼写）或 `fields` 参数：
+如果你希望像 `SimpleJdbcRepository` 一样，在业务层按 `domainType` 直接拿仓储再调用，可使用 `SimpleProjectionQueryRepositoryFactory`：
 
 ```java
-public interface UserProjectionMapperTest {
+@Service
+public class UserProjectionService {
 
-    List<UserView> findByQuery(UserQuery query,
-                               Class<UserView> projectionType,
-                               String fields);
+    private final SimpleProjectionQueryRepository<User> repository;
 
-    IPage<UserView> findByQuery(UserQuery query,
-                                Page<?> page,
-                                List<OrderItem> orderItems,
-                                Class<UserView> projectionType,
-                                String fields);
-}
+    public UserProjectionService(SimpleProjectionQueryRepositoryFactory factory) {
+        this.repository = factory.create(User.class);
+    }
 
-@Test
-void testFieldsMode() {
-    UserProjectionMapperTest mapper = mapperFactory.create(UserProjectionMapperTest.class, User.class);
-    List<UserView> list = mapper.findByQuery(new UserQuery(), UserView.class, "username,enabled");
-    assertThat(list).isNotEmpty();
+    public List<UserView> listEnabledUsers() {
+        QueryWrapper<User> wrapper = new QueryWrapper<User>()
+                .like("username", "tom")
+                .eq("is_enabled", true);
+        return repository.findByQuery(wrapper, UserView.class);
+    }
 }
 ```
 
-字段说明：
+说明：
 
-1. 支持 CSV 字符串（如 `"username,enabled"`）。
-2. 支持路径叶子匹配（如 `"email.phone"` 会按 `phone` 匹配）。
-3. 未选中的投影属性不参与 SQL select，返回对象中通常为 `null`。
-4. Feign 场景可传 `fields` 控制返回字段子集。
+1. 不需要定义 Mapper 接口，也不依赖 ByteBuddy 运行时生成。
+2. 调用协议与 `ProjectionRepository` 保持一致（`Wrapper + projectionType + page`）。
+3. 适合在 Service 层显式编排查询条件、分页与字段裁剪。
 
 ## 注意事项
 

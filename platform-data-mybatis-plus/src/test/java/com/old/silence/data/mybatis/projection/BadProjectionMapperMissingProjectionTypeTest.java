@@ -1,5 +1,7 @@
 package com.old.silence.data.mybatis.projection;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+
 import java.util.List;
 
 /**
@@ -7,5 +9,5 @@ import java.util.List;
  */
 public interface BadProjectionMapperMissingProjectionTypeTest {
 
-    List<TestUserProjection> findByQuery(TestUserQuery query);
+    List<TestUserProjection> findByQuery(Wrapper<TestUser> queryWrapper);
 }

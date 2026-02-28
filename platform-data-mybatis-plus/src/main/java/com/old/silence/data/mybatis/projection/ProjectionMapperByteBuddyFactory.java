@@ -1,7 +1,7 @@
 package com.old.silence.data.mybatis.projection;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
@@ -13,7 +13,6 @@ import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -62,7 +61,7 @@ public class ProjectionMapperByteBuddyFactory {
             }
             cleanupStaleEntries(cacheSegment);
 
-            ProjectionRepository<T> repository = repositoryFactory.create(entityType);
+            ProjectionRepository<T, Object> repository = repositoryFactory.create(entityType);
             ProjectionMapperInterceptor<T> interceptor = new ProjectionMapperInterceptor<>(repository);
 
             try {
@@ -126,84 +125,32 @@ public class ProjectionMapperByteBuddyFactory {
     private void validateFindByQueryMethod(Method method) {
         Class<?>[] paramTypes = method.getParameterTypes();
 
-        if (paramTypes.length < 2 || paramTypes.length > 5) {
+        if (paramTypes.length < 2 || paramTypes.length > 3) {
             throw invalidFindByQuerySignature(method,
-                    "parameter count must be 2 to 5, but was " + paramTypes.length);
+                "parameter count must be 2 or 3, but was " + paramTypes.length);
         }
 
-        if (!isValidQueryParameterType(paramTypes[0])) {
+        if (!Wrapper.class.isAssignableFrom(paramTypes[0])) {
             throw invalidFindByQuerySignature(method,
-                    "first argument must be query object, but was " + paramTypes[0].getSimpleName());
+                "first argument must be QueryWrapper/LambdaQueryWrapper, but was " + paramTypes[0].getSimpleName());
         }
 
         if (paramTypes.length == 2) {
             if (paramTypes[1] != Class.class || !List.class.isAssignableFrom(method.getReturnType())) {
                 throw invalidFindByQuerySignature(method,
-                        "for 2 parameters, signature must be (query, Class) and return type must be List");
+                        "for 2 parameters, signature must be (queryWrapper, Class) and return type must be List");
             }
             return;
         }
 
         if (paramTypes.length == 3) {
-            if (List.class.isAssignableFrom(paramTypes[1]) && paramTypes[2] == Class.class
-                    && List.class.isAssignableFrom(method.getReturnType())) {
-                return;
-            }
             if (Page.class.isAssignableFrom(paramTypes[1]) && paramTypes[2] == Class.class
                     && IPage.class.isAssignableFrom(method.getReturnType())) {
                 return;
             }
-            if (paramTypes[1] == Class.class && isFieldsType(paramTypes[2])
-                    && List.class.isAssignableFrom(method.getReturnType())) {
-                return;
-            }
             throw invalidFindByQuerySignature(method,
-                    "for 3 parameters, signature must be (query, List<OrderItem>, Class), (query, Page, Class), or (query, Class, fields)");
+                    "for 3 parameters, signature must be (queryWrapper, Page, Class)");
         }
-
-        if (paramTypes.length == 4) {
-            if (Page.class.isAssignableFrom(paramTypes[1])
-                    && List.class.isAssignableFrom(paramTypes[2])
-                    && paramTypes[3] == Class.class
-                    && IPage.class.isAssignableFrom(method.getReturnType())) {
-                return;
-            }
-            if (Page.class.isAssignableFrom(paramTypes[1])
-                    && paramTypes[2] == Class.class
-                    && isFieldsType(paramTypes[3])
-                    && IPage.class.isAssignableFrom(method.getReturnType())) {
-                return;
-            }
-            if (List.class.isAssignableFrom(paramTypes[1])
-                    && paramTypes[2] == Class.class
-                    && isFieldsType(paramTypes[3])
-                    && List.class.isAssignableFrom(method.getReturnType())) {
-                return;
-            }
-            throw invalidFindByQuerySignature(method,
-                    "for 4 parameters, signature must be (query, Page, List<OrderItem>, Class), (query, Page, Class, fields), or (query, List<OrderItem>, Class, fields)");
-        }
-
-        if (Page.class.isAssignableFrom(paramTypes[1])
-                && List.class.isAssignableFrom(paramTypes[2])
-                && paramTypes[3] == Class.class
-                && isFieldsType(paramTypes[4])
-                && IPage.class.isAssignableFrom(method.getReturnType())) {
-            return;
-        }
-
-        throw invalidFindByQuerySignature(method,
-                "for 5 parameters, signature must be (query, Page, List<OrderItem>, Class, fields)");
-    }
-
-    private boolean isValidQueryParameterType(Class<?> type) {
-        return !Page.class.isAssignableFrom(type)
-                && !List.class.isAssignableFrom(type)
-                && type != Class.class;
-    }
-
-    private boolean isFieldsType(Class<?> type) {
-        return type == String.class || type == String[].class;
     }
 
     private IllegalArgumentException invalidFindByQuerySignature(Method method, String reason) {
@@ -212,9 +159,9 @@ public class ProjectionMapperByteBuddyFactory {
 
     public static class ProjectionMapperInterceptor<T> {
 
-        private final ProjectionRepository<T> repository;
+        private final ProjectionRepository<T, Object> repository;
 
-        public ProjectionMapperInterceptor(ProjectionRepository<T> repository) {
+        public ProjectionMapperInterceptor(ProjectionRepository<T, Object> repository) {
             this.repository = repository;
         }
 
@@ -227,84 +174,19 @@ public class ProjectionMapperByteBuddyFactory {
         }
 
         private Object invokeFindByQuery(Object[] args) {
-            if (args.length == 2 && args[1] instanceof Class<?>) {
-                return repository.findByQuery(args[0], (Class<?>) args[1]);
-            }
-
-            if (args.length == 3 && args[1] instanceof List<?> && args[2] instanceof Class<?>) {
+            if (args.length == 2 && args[0] instanceof Wrapper<?> wrapper && args[1] instanceof Class<?>) {
                 @SuppressWarnings("unchecked")
-                List<OrderItem> orderItems = (List<OrderItem>) args[1];
-                return repository.findByQuery(args[0], orderItems, (Class<?>) args[2]);
+                Wrapper<T> typedWrapper = (Wrapper<T>) wrapper;
+                return repository.findByQuery(typedWrapper, (Class<?>) args[1]);
             }
 
-            if (args.length == 3 && args[1] instanceof Page<?> && args[2] instanceof Class<?>) {
-                return repository.findByQuery(args[0], (Page<?>) args[1], (Class<?>) args[2]);
-            }
-
-            if (args.length == 3 && args[1] instanceof Class<?> && isFieldsArg(args[2])) {
-                return repository.findByQuery(args[0], (Class<?>) args[1], parseFields(args[2]));
-            }
-
-            if (args.length == 4 && args[1] instanceof Page<?> && args[2] instanceof List<?> && args[3] instanceof Class<?>) {
+            if (args.length == 3 && args[0] instanceof Wrapper<?> wrapper && args[1] instanceof Page<?> && args[2] instanceof Class<?>) {
                 @SuppressWarnings("unchecked")
-                List<OrderItem> orderItems = (List<OrderItem>) args[2];
-                return repository.findByQuery(args[0], (Page<?>) args[1], orderItems, (Class<?>) args[3]);
-            }
-
-            if (args.length == 4 && args[1] instanceof Page<?> && args[2] instanceof Class<?> && isFieldsArg(args[3])) {
-                return repository.findByQuery(args[0], (Page<?>) args[1], (Class<?>) args[2], parseFields(args[3]));
-            }
-
-            if (args.length == 4 && args[1] instanceof List<?> && args[2] instanceof Class<?> && isFieldsArg(args[3])) {
-                @SuppressWarnings("unchecked")
-                List<OrderItem> orderItems = (List<OrderItem>) args[1];
-                return repository.findByQuery(args[0], orderItems, (Class<?>) args[2], parseFields(args[3]));
-            }
-
-            if (args.length == 5
-                    && args[1] instanceof Page<?>
-                    && args[2] instanceof List<?>
-                    && args[3] instanceof Class<?>
-                    && isFieldsArg(args[4])) {
-                @SuppressWarnings("unchecked")
-                List<OrderItem> orderItems = (List<OrderItem>) args[2];
-                return repository.findByQuery(args[0], (Page<?>) args[1], orderItems, (Class<?>) args[3], parseFields(args[4]));
+                Wrapper<T> typedWrapper = (Wrapper<T>) wrapper;
+                return repository.findByQuery(typedWrapper, (Page<?>) args[1], (Class<?>) args[2]);
             }
 
             throw new IllegalArgumentException("Unsupported findByQuery arguments");
-        }
-
-        private boolean isFieldsArg(Object arg) {
-            return arg instanceof String || arg instanceof String[];
-        }
-
-        private List<String> parseFields(Object arg) {
-            if (arg instanceof String fieldsExpression) {
-                return parseFieldsExpression(fieldsExpression);
-            }
-
-            String[] fieldsArray = (String[]) arg;
-            List<String> fields = new ArrayList<>();
-            for (String field : fieldsArray) {
-                fields.addAll(parseFieldsExpression(field));
-            }
-            return fields;
-        }
-
-        private List<String> parseFieldsExpression(String fieldsExpression) {
-            if (fieldsExpression == null || fieldsExpression.isBlank()) {
-                return List.of();
-            }
-
-            String[] rawFields = fieldsExpression.split(",");
-            List<String> fields = new ArrayList<>(rawFields.length);
-            for (String field : rawFields) {
-                String normalized = field == null ? null : field.trim();
-                if (normalized != null && !normalized.isEmpty()) {
-                    fields.add(normalized);
-                }
-            }
-            return fields;
         }
     }
 }

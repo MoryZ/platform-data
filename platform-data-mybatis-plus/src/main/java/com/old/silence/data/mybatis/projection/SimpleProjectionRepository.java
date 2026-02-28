@@ -1,19 +1,22 @@
 package com.old.silence.data.mybatis.projection;
 
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
+import com.baomidou.mybatisplus.core.metadata.TableInfo;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.old.silence.data.commons.converter.QueryWrapperConverter;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Simple projection repository implementation.
  */
-public class SimpleProjectionRepository<T> implements ProjectionRepository<T> {
+public class SimpleProjectionRepository<T, ID> implements ProjectionRepository<T, ID> {
 
     private final Class<T> entityType;
     private final ProjectionMetadataResolver metadataResolver;
@@ -28,58 +31,50 @@ public class SimpleProjectionRepository<T> implements ProjectionRepository<T> {
     }
 
     @Override
-    public <P> List<P> findByQuery(Object query, Class<P> projectionType) {
-        return findByQuery(query, projectionType, Collections.emptyList());
+    public Optional<T> findById(ID id) {
+        Objects.requireNonNull(id, "Id must not be null");
+
+        TableInfo tableInfo = getRequiredTableInfo();
+        QueryWrapper<T> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq(tableInfo.getKeyColumn(), id);
+
+        List<T> records = findByQuery(queryWrapper, entityType);
+        return records.stream().findFirst();
     }
 
     @Override
-    public <P> List<P> findByQuery(Object query, Class<P> projectionType, List<String> fields) {
-        return findByQuery(query, Collections.emptyList(), projectionType, fields);
+    public <P> Optional<P> findById(ID id, Class<P> projectionType) {
+        Objects.requireNonNull(id, "Id must not be null");
+
+        TableInfo tableInfo = getRequiredTableInfo();
+        QueryWrapper<T> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq(tableInfo.getKeyColumn(), id);
+
+        List<P> records = findByQuery(queryWrapper, projectionType);
+        return records.stream().findFirst();
     }
 
     @Override
-    public <P> List<P> findByQuery(Object query, List<OrderItem> orderItems, Class<P> projectionType) {
-        return findByQuery(query, orderItems, projectionType, Collections.emptyList());
-    }
+    public <P> List<P> findByQuery(Wrapper<T> queryWrapper, Class<P> projectionType) {
+        Objects.requireNonNull(queryWrapper, "Query wrapper must not be null");
 
-    @Override
-    public <P> List<P> findByQuery(Object query, List<OrderItem> orderItems, Class<P> projectionType, List<String> fields) {
-        QueryWrapper<T> wrapper = QueryWrapperConverter.convert(query, entityType);
-        applyOrderItems(wrapper, orderItems);
-
-        ProjectionMetadata metadata = metadataResolver.resolve(projectionType, entityType, fields);
+        ProjectionMetadata metadata = metadataResolver.resolve(projectionType, entityType, Collections.emptyList());
         if (projectionType.isInterface()) {
-            List<java.util.Map<String, Object>> resultMaps = queryExecutor.selectMaps(wrapper, metadata);
+            List<java.util.Map<String, Object>> resultMaps = queryExecutor.selectMaps(queryWrapper, metadata);
             return InterfaceProjectionFactory.createList(projectionType, resultMaps);
         }
-        return queryExecutor.select(wrapper, metadata);
+        return queryExecutor.select(queryWrapper, metadata);
     }
 
     @Override
-    public <P> IPage<P> findByQuery(Object query, Page<?> page, Class<P> projectionType) {
-        return findByQuery(query, page, projectionType, Collections.emptyList());
-    }
+    public <P> IPage<P> findByQuery(Wrapper<T> queryWrapper, Page<?> page, Class<P> projectionType) {
+        Objects.requireNonNull(queryWrapper, "Query wrapper must not be null");
+        Objects.requireNonNull(page, "Page must not be null");
+        Wrapper<T> dataWrapper = applyPageOrders(queryWrapper, page);
 
-    @Override
-    public <P> IPage<P> findByQuery(Object query, Page<?> page, Class<P> projectionType, List<String> fields) {
-        return findByQuery(query, page, Collections.emptyList(), projectionType, fields);
-    }
-
-    @Override
-    public <P> IPage<P> findByQuery(Object query, Page<?> page, List<OrderItem> orderItems, Class<P> projectionType) {
-        return findByQuery(query, page, orderItems, projectionType, Collections.emptyList());
-    }
-
-    @Override
-    public <P> IPage<P> findByQuery(Object query, Page<?> page, List<OrderItem> orderItems, Class<P> projectionType,
-                                    List<String> fields) {
-        QueryWrapper<T> countWrapper = QueryWrapperConverter.convert(query, entityType);
-        QueryWrapper<T> wrapper = QueryWrapperConverter.convert(query, entityType);
-        applyOrderItems(wrapper, orderItems);
-
-        ProjectionMetadata metadata = metadataResolver.resolve(projectionType, entityType, fields);
+        ProjectionMetadata metadata = metadataResolver.resolve(projectionType, entityType, Collections.emptyList());
         if (projectionType.isInterface()) {
-            IPage<java.util.Map<String, Object>> mapPage = queryExecutor.selectPageMaps(page, wrapper, countWrapper, metadata);
+            IPage<java.util.Map<String, Object>> mapPage = queryExecutor.selectPageMaps(page, dataWrapper, queryWrapper, metadata);
             List<P> records = InterfaceProjectionFactory.createList(projectionType, mapPage.getRecords());
 
             @SuppressWarnings("unchecked")
@@ -88,16 +83,63 @@ public class SimpleProjectionRepository<T> implements ProjectionRepository<T> {
             result.setTotal(mapPage.getTotal());
             return result;
         }
-        return queryExecutor.selectPage(page, wrapper, countWrapper, metadata);
+        return queryExecutor.selectPage(page, dataWrapper, queryWrapper, metadata);
     }
 
-    private void applyOrderItems(QueryWrapper<T> wrapper, List<OrderItem> orderItems) {
-        if (orderItems == null || orderItems.isEmpty()) {
-            return;
+    @Override
+    public long countByQuery(Wrapper<T> queryWrapper) {
+        Objects.requireNonNull(queryWrapper, "Query wrapper must not be null");
+        return queryExecutor.selectCount(queryWrapper, entityType);
+    }
+
+    @Override
+    public int create(T entity) {
+        return queryExecutor.insert(entity, entityType);
+    }
+
+    @Override
+    public int updateById(T entity) {
+        return queryExecutor.updateById(entity, entityType);
+    }
+
+    @Override
+    public int deleteById(ID id) {
+        return queryExecutor.deleteById(id, entityType);
+    }
+
+    @Override
+    public int deleteByQuery(Wrapper<T> queryWrapper) {
+        return queryExecutor.deleteByQuery(queryWrapper, entityType);
+    }
+
+    @Override
+    public boolean existsByQuery(Wrapper<T> queryWrapper) {
+        return countByQuery(queryWrapper) > 0;
+    }
+
+    private Wrapper<T> applyPageOrders(Wrapper<T> queryWrapper, Page<?> page) {
+        if (page.orders() == null || page.orders().isEmpty()) {
+            return queryWrapper;
         }
-        for (OrderItem item : orderItems) {
+
+        if (!(queryWrapper instanceof QueryWrapper<?> rawQueryWrapper)) {
+            return queryWrapper;
+        }
+
+        @SuppressWarnings("unchecked")
+        QueryWrapper<T> wrapper = ((QueryWrapper<T>) rawQueryWrapper).clone();
+        for (OrderItem item : page.orders()) {
             String safeColumn = metadataResolver.resolveOrderColumn(entityType, item.getColumn());
             wrapper.orderBy(true, item.isAsc(), safeColumn);
         }
+        return wrapper;
+    }
+
+    private TableInfo getRequiredTableInfo() {
+        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
+        if (tableInfo == null || tableInfo.getKeyColumn() == null || tableInfo.getKeyColumn().isBlank()) {
+            throw new IllegalArgumentException("No @TableId found for entity type: " + entityType.getName());
+        }
+        return tableInfo;
     }
 }

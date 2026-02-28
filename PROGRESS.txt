@@ -227,3 +227,96 @@ fields 识别第一阶段（2026-02-27）：
 3) 验证结果
    - `ProjectionIntegrationTest` 通过（Tests run: 15, failed: 0）
    - `mvn -pl platform-data-mybatis-plus -am test -q` 通过（exit code 0）
+
+Wrapper 参数化重构收口（2026-02-28）：
+1) 查询参数模型收敛
+   - `ProjectionRepository` / `SimpleProjectionRepository` / `ProjectionQueryExecutor`
+     的 `findByQuery` 查询参数统一为 `Wrapper<T>`
+   - 移除独立 `orderItems` 方法参数，分页排序改为读取 `Page.orders()`
+2) ByteBuddy 分派与签名规则同步
+   - `ProjectionMapperByteBuddyFactory` 改为 Wrapper-first 协议：
+     - 列表：`(queryWrapper, Class)`、`(queryWrapper, Class, fields)`
+     - 分页：`(queryWrapper, Page, Class)`、`(queryWrapper, Page, Class, fields)`
+   - 移除旧 `orderItems` 组合分派
+   - create 阶段签名错误文案同步为 `queryWrapper` 语义
+3) 分页 count/order 语义修复
+   - 修复 `COUNT` SQL 被 `ORDER BY` 污染问题
+   - 策略：分页查询使用“数据查询 wrapper（带排序副本）+ count wrapper（原始）”
+4) 测试与文档同步
+   - `ProjectionIntegrationTest` 全量改为 `QueryWrapper` 调用
+   - 坏签名接口与 `TestUserProjectionMapperTest` 同步到 Wrapper 协议
+   - `src/test/java/com/old/silence/data/mybatis/test/README.md` 示例改为 Wrapper-first
+5) 验证结果
+   - `runTests`：`ProjectionIntegrationTest` 通过（17 passed, 0 failed）
+   - `mvn -pl platform-data-mybatis-plus -am test -DskipTests=false` 通过
+   - `mvn -pl platform-data-mybatis-plus -am verify -DskipTests=false` 通过（Reactor 3/3 SUCCESS）
+
+SimpleJdbcRepository 风格替代入口（2026-02-28）：
+1) 新增委托式查询入口（不依赖 ByteBuddy）
+   - 新增 `ProjectionQueryOperations`（显式 `domainType` 的查询操作类）
+   - 新增 `SimpleProjectionQueryRepository<T>`（`operations + domainType` 用法）
+2) 自动配置接入
+   - `ProjectionQueryAutoConfiguration` 新增 `projectionQueryOperations` Bean
+3) 集成测试覆盖
+   - `ProjectionIntegrationTest#shouldSupportSimpleJdbcStyleProjectionRepository`
+4) 关键问题修复
+   - 规避 `@MapperScan` 将接口误识别为 Mapper 的风险：
+     将 `ProjectionQueryOperations` 设计为具体类而非接口
+5) 验证结果
+   - `ProjectionIntegrationTest` 通过（17 passed, 0 failed）
+   - `mvn -pl platform-data-mybatis-plus -am test -DskipTests=false` 通过（Reactor 3/3 SUCCESS）
+
+查询扩展方法补齐（2026-02-28）：
+1) 新增查询统计能力
+   - `ProjectionRepository` 增加 `countByQuery` / `existsByQuery`
+   - `SimpleProjectionRepository` 完成实现
+2) 新入口同步
+   - `ProjectionQueryOperations` 增加 `countByQuery` / `existsByQuery`
+   - `SimpleProjectionQueryRepository` 同步暴露 `countByQuery` / `existsByQuery`
+3) 执行链补齐
+   - `ProjectionQueryExecutor` 新增 `selectCount(Wrapper, entityType)`
+4) 测试补充
+   - `ProjectionIntegrationTest` 新增：
+     - `shouldSupportCountAndExistsByQuery`
+     - `shouldSupportSimpleJdbcStyleCountAndExistsByQuery`
+5) 验证结果
+   - `ProjectionIntegrationTest` 通过（20 passed, 0 failed）
+   - `mvn -pl platform-data-mybatis-plus -am test -DskipTests=false` 通过（Reactor 3/3 SUCCESS）
+
+CRUD 能力补齐与主键语义收敛（2026-02-28）：
+1) 新增写操作能力
+   - `ProjectionRepository` / `SimpleProjectionRepository` 增加并实现：
+     `create` / `updateById` / `deleteById` / `deleteByQuery`
+   - `ProjectionQueryOperations` / `SimpleProjectionQueryRepository` 同步暴露同名方法
+2) 动态 SQL 执行链补齐
+   - `ProjectionMappedStatementFactory` 新增：
+     `ensureInsertStatement` / `ensureUpdateByIdStatement`
+     `ensureDeleteByIdStatement` / `ensureDeleteByQueryStatement`
+   - `ProjectionQueryExecutor` 新增：
+     `insert` / `updateById` / `deleteById` / `deleteByQuery`
+3) 关键兼容修复
+   - insert/update 动态参数表达式显式带上 `typeHandler`，修复 enum 列写入
+   - `deleteById` 语义从 `Object` 收敛为主键泛型：`<ID> deleteById(ID id)`
+   - `deleteById` 动态 SQL 主键参数显式指定 `javaType`，避免 `Map` 参数误用 TypeHandler
+4) 测试补充
+   - `ProjectionIntegrationTest` 新增：
+     - `shouldSupportCreateUpdateDeleteByRepository`
+     - `shouldSupportCreateUpdateDeleteBySimpleJdbcStyleRepository`
+5) 验证结果
+   - `runTests`：`ProjectionIntegrationTest` 通过（23 passed, 0 failed）
+   - `runTests`（全量）通过（23 passed, 0 failed）
+
+fields 参数模式收口（2026-02-28）：
+1) API 收敛
+   - `ProjectionRepository<T, ID>` 移除以下重载：
+     - `findByQuery(queryWrapper, projectionType, fields)`
+     - `findByQuery(queryWrapper, page, projectionType, fields)`
+   - `ProjectionQueryOperations` / `SimpleProjectionQueryRepository` 同步移除对应重载
+2) 调用协议统一
+   - 统一为 `Wrapper + projectionType (+ page)`，字段集合仅由 `projectionType` 定义
+   - 移除 ByteBuddy `fields` 参数分派与签名校验分支
+3) 测试与文档同步
+   - `ProjectionIntegrationTest` 移除 `fields` 参数路径测试并更新断言
+   - 测试 README 移除 `class + fields` 参数模式示例
+4) 验证结果
+   - `ProjectionIntegrationTest` 通过（21 passed, 0 failed）

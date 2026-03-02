@@ -1,8 +1,10 @@
 package com.old.silence.data.mybatis.projection;
 
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -11,6 +13,11 @@ import org.springframework.context.annotation.Bean;
 @AutoConfiguration
 @ConditionalOnBean(SqlSessionFactory.class)
 public class ProjectionQueryAutoConfiguration {
+
+    @Bean
+    public static ProjectionRepositoryAutoRegistrar projectionRepositoryAutoRegistrar() {
+        return new ProjectionRepositoryAutoRegistrar();
+    }
 
     @Bean
     public ProjectionMetadataResolver projectionMetadataResolver() {
@@ -32,6 +39,18 @@ public class ProjectionQueryAutoConfiguration {
     public ProjectionRepositoryFactory projectionRepositoryFactory(ProjectionMetadataResolver metadataResolver,
                                                                    ProjectionQueryExecutor queryExecutor) {
         return new ProjectionRepositoryFactory(metadataResolver, queryExecutor);
+    }
+
+    @Bean
+    public ProjectionRepositoryProxyFactory projectionRepositoryProxyFactory(
+            ProjectionRepositoryFactory projectionRepositoryFactory,
+            ObjectProvider<SqlSessionFactory> sqlSessionFactoryProvider,
+            ObjectProvider<SqlSessionTemplate> sqlSessionTemplateProvider) {
+        return new ProjectionRepositoryProxyFactory(
+                projectionRepositoryFactory,
+                sqlSessionFactoryProvider.getIfAvailable(),
+                sqlSessionTemplateProvider.getIfAvailable()
+        );
     }
 
     @Bean

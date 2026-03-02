@@ -28,8 +28,10 @@ class ProjectionMappedStatementFactory {
     private static final String MAP_RESULT_MAP_SUFFIX = ".mapProjectionResultMap";
     private static final String INSERT_STATEMENT_SUFFIX = ".insertEntity";
     private static final String UPDATE_BY_ID_STATEMENT_SUFFIX = ".updateEntityById";
+    private static final String UPDATE_ALL_BY_ID_STATEMENT_SUFFIX = ".updateAllEntityById";
     private static final String DELETE_BY_ID_STATEMENT_SUFFIX = ".deleteEntityById";
     private static final String DELETE_BY_QUERY_STATEMENT_SUFFIX = ".deleteEntityByQuery";
+    private static final String DELETE_ALL_STATEMENT_SUFFIX = ".deleteAllEntity";
 
     private final ProjectionResultMapRegistry resultMapRegistry;
 
@@ -201,6 +203,44 @@ class ProjectionMappedStatementFactory {
         return statementId;
     }
 
+    String ensureUpdateAllByIdStatement(Configuration configuration, Class<?> entityType, TableInfo tableInfo) {
+        String statementId = entityType.getName() + UPDATE_ALL_BY_ID_STATEMENT_SUFFIX;
+        if (configuration.hasStatement(statementId)) {
+            return statementId;
+        }
+
+        String keyProperty = tableInfo.getKeyProperty();
+        String keyColumn = tableInfo.getKeyColumn();
+        if (keyProperty == null || keyProperty.isBlank() || keyColumn == null || keyColumn.isBlank()) {
+            throw new IllegalArgumentException("No @TableId found for entity type: " + entityType.getName());
+        }
+
+        StringBuilder setClause = new StringBuilder();
+        for (TableFieldInfo fieldInfo : tableInfo.getFieldList()) {
+            setClause.append(fieldInfo.getColumn())
+                    .append("=#{")
+                    .append(buildParameterExpression(fieldInfo))
+                    .append("},");
+        }
+
+        String sql = "<script>UPDATE " + tableInfo.getTableName()
+                + " <set>" + setClause + "</set>"
+                + " WHERE " + keyColumn + "=#{" + keyProperty + "}"
+                + "</script>";
+
+        LanguageDriver languageDriver = configuration.getDefaultScriptingLanguageInstance();
+        SqlSource sqlSource = languageDriver.createSqlSource(configuration, sql, entityType);
+
+        MappedStatement.Builder builder = new MappedStatement.Builder(configuration,
+                statementId,
+                sqlSource,
+                SqlCommandType.UPDATE);
+        builder.keyGenerator(NoKeyGenerator.INSTANCE);
+
+        configuration.addMappedStatement(builder.build());
+        return statementId;
+    }
+
     private String buildParameterExpression(TableFieldInfo fieldInfo) {
         String property = fieldInfo.getProperty();
         Class<?> typeHandler = resolveTypeHandler(fieldInfo);
@@ -264,6 +304,27 @@ class ProjectionMappedStatementFactory {
 
         String sql = "<script>DELETE FROM " + tableInfo.getTableName()
                 + " ${" + Constants.WRAPPER + ".customSqlSegment}</script>";
+
+        LanguageDriver languageDriver = configuration.getDefaultScriptingLanguageInstance();
+        SqlSource sqlSource = languageDriver.createSqlSource(configuration, sql, java.util.Map.class);
+
+        MappedStatement.Builder builder = new MappedStatement.Builder(configuration,
+                statementId,
+                sqlSource,
+                SqlCommandType.DELETE);
+        builder.keyGenerator(NoKeyGenerator.INSTANCE);
+
+        configuration.addMappedStatement(builder.build());
+        return statementId;
+    }
+
+    String ensureDeleteAllStatement(Configuration configuration, Class<?> entityType, TableInfo tableInfo) {
+        String statementId = entityType.getName() + DELETE_ALL_STATEMENT_SUFFIX;
+        if (configuration.hasStatement(statementId)) {
+            return statementId;
+        }
+
+        String sql = "<script>DELETE FROM " + tableInfo.getTableName() + "</script>";
 
         LanguageDriver languageDriver = configuration.getDefaultScriptingLanguageInstance();
         SqlSource sqlSource = languageDriver.createSqlSource(configuration, sql, java.util.Map.class);

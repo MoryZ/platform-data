@@ -1,5 +1,7 @@
 package com.old.silence.data.mybatis.projection;
 
+import java.io.Serializable;
+
 /**
  * Factory to create ProjectionRepository for specific entity type.
  */
@@ -14,7 +16,7 @@ public class ProjectionRepositoryFactory {
         this.queryExecutor = queryExecutor;
     }
 
-    public <T, ID> ProjectionRepository<T, ID> create(Class<T> entityType) {
+    public <T, ID extends Serializable> ProjectionRepository<T, ID> create(Class<T> entityType) {
         return new SimpleProjectionRepository<>(entityType, metadataResolver, queryExecutor);
     }
 }

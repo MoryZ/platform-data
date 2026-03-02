@@ -11,6 +11,7 @@ import org.apache.ibatis.session.RowBounds;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,7 +127,26 @@ public class ProjectionQueryExecutor {
         }
     }
 
-    public <T, ID> int deleteById(ID id, Class<T> entityType) {
+    public <T> int updateByIdAllowNull(T entity, Class<T> entityType) {
+        Objects.requireNonNull(entity, "Entity must not be null");
+
+        TableInfo tableInfo = getRequiredTableInfo(entityType);
+        org.springframework.beans.BeanWrapperImpl beanWrapper = new org.springframework.beans.BeanWrapperImpl(entity);
+        Object keyValue = beanWrapper.getPropertyValue(tableInfo.getKeyProperty());
+        if (keyValue == null) {
+            throw new IllegalArgumentException("Entity id must not be null for update");
+        }
+
+        String statementId = statementFactory.ensureUpdateAllByIdStatement(sqlSessionFactory.getConfiguration(),
+                entityType,
+                tableInfo);
+
+        try (SqlSession session = sqlSessionFactory.openSession()) {
+            return session.update(statementId, entity);
+        }
+    }
+
+    public <T, ID extends Serializable> int deleteById(ID id, Class<T> entityType) {
         Objects.requireNonNull(id, "Id must not be null");
 
         TableInfo tableInfo = getRequiredTableInfo(entityType);
@@ -154,6 +174,15 @@ public class ProjectionQueryExecutor {
         params.put(Constants.WRAPPER, wrapper);
         try (SqlSession session = sqlSessionFactory.openSession()) {
             return session.delete(statementId, params);
+        }
+    }
+
+    public <T> int deleteAll(Class<T> entityType) {
+        TableInfo tableInfo = getRequiredTableInfo(entityType);
+        String statementId = statementFactory.ensureDeleteAllStatement(sqlSessionFactory.getConfiguration(), entityType, tableInfo);
+
+        try (SqlSession session = sqlSessionFactory.openSession()) {
+            return session.delete(statementId);
         }
     }
 

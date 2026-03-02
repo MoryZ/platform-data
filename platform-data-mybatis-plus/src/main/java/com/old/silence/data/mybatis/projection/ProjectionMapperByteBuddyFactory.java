@@ -10,6 +10,7 @@ import net.bytebuddy.implementation.bind.annotation.AllArguments;
 import net.bytebuddy.implementation.bind.annotation.Origin;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 
+import java.io.Serializable;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -61,7 +62,7 @@ public class ProjectionMapperByteBuddyFactory {
             }
             cleanupStaleEntries(cacheSegment);
 
-            ProjectionRepository<T, Object> repository = repositoryFactory.create(entityType);
+            ProjectionRepository<T, Serializable> repository = repositoryFactory.create(entityType);
             ProjectionMapperInterceptor<T> interceptor = new ProjectionMapperInterceptor<>(repository);
 
             try {
@@ -159,9 +160,9 @@ public class ProjectionMapperByteBuddyFactory {
 
     public static class ProjectionMapperInterceptor<T> {
 
-        private final ProjectionRepository<T, Object> repository;
+        private final ProjectionRepository<T, Serializable> repository;
 
-        public ProjectionMapperInterceptor(ProjectionRepository<T, Object> repository) {
+        public ProjectionMapperInterceptor(ProjectionRepository<T, Serializable> repository) {
             this.repository = repository;
         }
 

@@ -7,16 +7,20 @@ import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.springframework.beans.BeanWrapperImpl;
 
+import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.StreamSupport;
 
 /**
  * Simple projection repository implementation.
  */
-public class SimpleProjectionRepository<T, ID> implements ProjectionRepository<T, ID> {
+public class SimpleProjectionRepository<T, ID extends Serializable> implements ProjectionRepository<T, ID> {
 
     private final Class<T> entityType;
     private final ProjectionMetadataResolver metadataResolver;
@@ -52,6 +56,39 @@ public class SimpleProjectionRepository<T, ID> implements ProjectionRepository<T
 
         List<P> records = findByQuery(queryWrapper, projectionType);
         return records.stream().findFirst();
+    }
+
+    @Override
+    public List<T> findAll() {
+        return findByQuery(new QueryWrapper<>(), entityType);
+    }
+
+    @Override
+    public <P> List<P> findAll(Class<P> projectionType) {
+        return findByQuery(new QueryWrapper<>(), projectionType);
+    }
+
+    @Override
+    public List<T> findAllById(Iterable<ID> ids) {
+        return findAllById(ids, entityType);
+    }
+
+    @Override
+    public <P> List<P> findAllById(Iterable<ID> ids, Class<P> projectionType) {
+        List<ID> idList = toList(ids);
+        if (idList.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        TableInfo tableInfo = getRequiredTableInfo();
+        QueryWrapper<T> queryWrapper = new QueryWrapper<>();
+        queryWrapper.in(tableInfo.getKeyColumn(), idList);
+        return findByQuery(queryWrapper, projectionType);
+    }
+
+    @Override
+    public List<T> findByQuery(Wrapper<T> queryWrapper) {
+        return findByQuery(queryWrapper, entityType);
     }
 
     @Override
@@ -93,18 +130,109 @@ public class SimpleProjectionRepository<T, ID> implements ProjectionRepository<T
     }
 
     @Override
-    public int create(T entity) {
+    public boolean existsById(ID id) {
+        return findById(id).isPresent();
+    }
+
+    @Override
+    public boolean existsByQuery(Wrapper<T> queryWrapper) {
+        return countByQuery(queryWrapper) > 0;
+    }
+
+    @Override
+    public long count() {
+        return countByQuery(new QueryWrapper<>());
+    }
+
+    @Override
+    public <S extends T> int insert(S entity) {
+        Objects.requireNonNull(entity, "Entity must not be null");
         return queryExecutor.insert(entity, entityType);
     }
 
     @Override
-    public int updateById(T entity) {
+    public <S extends T> int insertAll(Iterable<S> entities) {
+        if (entities == null) {
+            return 0;
+        }
+        return StreamSupport.stream(entities.spliterator(), false)
+                .map(this::insert)
+                .reduce(0, Integer::sum);
+    }
+
+    @Override
+    public <S extends T> int update(S entity) {
+        Objects.requireNonNull(entity, "Entity must not be null");
+        return queryExecutor.updateByIdAllowNull(entity, entityType);
+    }
+
+    @Override
+    public <S extends T> int updateAll(Iterable<S> entities) {
+        if (entities == null) {
+            return 0;
+        }
+        return StreamSupport.stream(entities.spliterator(), false)
+                .map(this::update)
+                .reduce(0, Integer::sum);
+    }
+
+    @Override
+    public <S extends T> int updateNonNull(S entity) {
+        Objects.requireNonNull(entity, "Entity must not be null");
         return queryExecutor.updateById(entity, entityType);
     }
 
     @Override
+    public <S extends T> int save(S entity) {
+        Objects.requireNonNull(entity, "Entity must not be null");
+
+        ID id = extractId(entity);
+        if (id == null) {
+            return insert(entity);
+        }
+        return existsById(id) ? updateNonNull(entity) : insert(entity);
+    }
+
+    @Override
     public int deleteById(ID id) {
+        Objects.requireNonNull(id, "Id must not be null");
         return queryExecutor.deleteById(id, entityType);
+    }
+
+    @Override
+    public int delete(T entity) {
+        Objects.requireNonNull(entity, "Entity must not be null");
+
+        ID id = extractId(entity);
+        if (id == null) {
+            return 0;
+        }
+        return deleteById(id);
+    }
+
+    @Override
+    public int deleteAllById(Iterable<? extends ID> ids) {
+        if (ids == null) {
+            return 0;
+        }
+        return StreamSupport.stream(ids.spliterator(), false)
+                .map(this::deleteById)
+                .reduce(0, Integer::sum);
+    }
+
+    @Override
+    public int deleteAll(Iterable<? extends T> entities) {
+        if (entities == null) {
+            return 0;
+        }
+        return StreamSupport.stream(entities.spliterator(), false)
+                .map(this::delete)
+                .reduce(0, Integer::sum);
+    }
+
+    @Override
+    public int deleteAll() {
+        return queryExecutor.deleteAll(entityType);
     }
 
     @Override
@@ -112,9 +240,21 @@ public class SimpleProjectionRepository<T, ID> implements ProjectionRepository<T
         return queryExecutor.deleteByQuery(queryWrapper, entityType);
     }
 
-    @Override
-    public boolean existsByQuery(Wrapper<T> queryWrapper) {
-        return countByQuery(queryWrapper) > 0;
+    private List<ID> toList(Iterable<ID> ids) {
+        if (ids == null) {
+            return Collections.emptyList();
+        }
+        List<ID> idList = new ArrayList<>();
+        ids.forEach(idList::add);
+        return idList;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <S extends T> ID extractId(S entity) {
+        TableInfo tableInfo = getRequiredTableInfo();
+        BeanWrapperImpl beanWrapper = new BeanWrapperImpl(entity);
+        Object id = beanWrapper.getPropertyValue(tableInfo.getKeyProperty());
+        return (ID) id;
     }
 
     private Wrapper<T> applyPageOrders(Wrapper<T> queryWrapper, Page<?> page) {

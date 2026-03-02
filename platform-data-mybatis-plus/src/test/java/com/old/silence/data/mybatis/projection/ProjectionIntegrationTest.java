@@ -7,13 +7,16 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.old.silence.data.mybatis.test.DataMyBatisTest;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.Test;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ContextConfiguration;
@@ -51,6 +54,12 @@ class ProjectionIntegrationTest {
 
     @Autowired
     private SimpleProjectionQueryRepositoryFactory simpleProjectionQueryRepositoryFactory;
+
+    @Autowired
+    private ProjectionRepositoryProxyFactory projectionRepositoryProxyFactory;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void shouldResolveTableFieldMappingAndEnumHandler() {
@@ -214,7 +223,7 @@ class ProjectionIntegrationTest {
     }
 
     @Test
-    void shouldSupportCreateUpdateDeleteByRepository() {
+    void shouldSupportInsertUpdateDeleteByRepository() {
         ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
 
         TestUser entity = new TestUser();
@@ -222,12 +231,12 @@ class ProjectionIntegrationTest {
         entity.setEnabled(true);
         entity.setStatus(TestUserStatus.ACTIVE);
 
-        int created = repository.create(entity);
+        int created = repository.insert(entity);
         assertThat(created).isEqualTo(1);
         assertThat(entity.getId()).isNotNull();
 
         entity.setUsername("user_crud_repo_updated");
-        int updated = repository.updateById(entity);
+        int updated = repository.updateNonNull(entity);
         assertThat(updated).isEqualTo(1);
 
         QueryWrapper<TestUser> byId = new QueryWrapper<TestUser>().eq("id", entity.getId());
@@ -241,7 +250,7 @@ class ProjectionIntegrationTest {
     }
 
     @Test
-    void shouldSupportCreateUpdateDeleteBySimpleJdbcStyleRepository() {
+    void shouldSupportInsertUpdateDeleteBySimpleJdbcStyleRepository() {
         SimpleProjectionQueryRepository<TestUser> repository =
                 simpleProjectionQueryRepositoryFactory.create(TestUser.class);
 
@@ -250,18 +259,107 @@ class ProjectionIntegrationTest {
         entity.setEnabled(false);
         entity.setStatus(TestUserStatus.DISABLED);
 
-        assertThat(repository.create(entity)).isEqualTo(1);
+        assertThat(repository.insert(entity)).isEqualTo(1);
         assertThat(entity.getId()).isNotNull();
 
         entity.setEnabled(true);
         entity.setStatus(TestUserStatus.ACTIVE);
-        assertThat(repository.updateById(entity)).isEqualTo(1);
+        assertThat(repository.updateNonNull(entity)).isEqualTo(1);
 
         QueryWrapper<TestUser> byId = new QueryWrapper<TestUser>().eq("id", entity.getId());
         assertThat(repository.existsByQuery(byId)).isTrue();
 
         assertThat(repository.deleteByQuery(byId)).isEqualTo(1);
         assertThat(repository.existsByQuery(byId)).isFalse();
+    }
+
+    @Test
+    void shouldPrioritizeMyBatisMappedCreateMethodOverProjectionRepositoryCreate() {
+        TestUserHybridCreateMapper repository = projectionRepositoryProxyFactory.create(TestUserHybridCreateMapper.class);
+
+        TestUser entity = new TestUser();
+        entity.setUsername("user_hybrid_mybatis_priority");
+        entity.setEnabled(true);
+        entity.setStatus(TestUserStatus.ACTIVE);
+
+        int created = repository.create(entity);
+        assertThat(created).isEqualTo(1);
+        assertThat(entity.getId()).isNotNull();
+
+        Integer persistedStatus = jdbcTemplate.queryForObject(
+            "select status from test_user where id = ?",
+            Integer.class,
+            entity.getId()
+        );
+        assertThat(persistedStatus).isEqualTo(2);
+    }
+
+    @Test
+    void shouldFallbackToProjectionRepositoryInsertWhenNoMyBatisMappedStatement() {
+        TestUserPlainProjectionRepository repository =
+                projectionRepositoryProxyFactory.create(TestUserPlainProjectionRepository.class);
+
+        TestUser entity = new TestUser();
+        entity.setUsername("user_hybrid_projection_fallback");
+        entity.setEnabled(true);
+        entity.setStatus(TestUserStatus.ACTIVE);
+
+        int created = repository.insert(entity);
+        assertThat(created).isEqualTo(1);
+        assertThat(entity.getId()).isNotNull();
+
+        Integer persistedStatus = jdbcTemplate.queryForObject(
+            "select status from test_user where id = ?",
+            Integer.class,
+            entity.getId()
+        );
+        assertThat(persistedStatus).isEqualTo(1);
+    }
+
+    @Test
+    void shouldSupportSaveAndUpdateSemantics() {
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
+
+        TestUser entity = new TestUser();
+        entity.setUsername("user_save_insert");
+        entity.setEnabled(true);
+        entity.setStatus(TestUserStatus.ACTIVE);
+
+        assertThat(repository.save(entity)).isEqualTo(1);
+        assertThat(entity.getId()).isNotNull();
+        assertThat(repository.existsById(entity.getId())).isTrue();
+
+        entity.setUsername("user_save_update");
+        assertThat(repository.save(entity)).isEqualTo(1);
+
+        TestUser refreshed = repository.findRequiredById(entity.getId());
+        assertThat(refreshed.getUsername()).isEqualTo("user_save_update");
+
+        entity.setEnabled(null);
+        assertThatThrownBy(() -> repository.update(entity))
+            .isInstanceOf(org.apache.ibatis.exceptions.PersistenceException.class)
+            .hasMessageContaining("NULL not allowed for column");
+    }
+
+    @Test
+    void shouldSupportFindAllAndDeleteAllApis() {
+        ProjectionRepository<TestUser, Long> repository = repositoryFactory.create(TestUser.class);
+
+        List<TestUser> initial = repository.findAll();
+        assertThat(initial).isNotEmpty();
+        assertThat(repository.count()).isEqualTo(initial.size());
+
+        List<Long> ids = initial.stream().map(TestUser::getId).limit(2).toList();
+        List<TestUserProjectionView> subset = repository.findAllById(ids, TestUserProjectionView.class);
+        assertThat(subset).hasSize(ids.size());
+
+        assertThat(repository.deleteAllById(ids)).isEqualTo(ids.size());
+        assertThat(repository.findAllById(ids)).isEmpty();
+
+        long remaining = repository.count();
+        assertThat(remaining).isGreaterThanOrEqualTo(1);
+        assertThat(repository.deleteAll()).isEqualTo((int) remaining);
+        assertThat(repository.count()).isZero();
     }
 
     @Test
@@ -400,6 +498,18 @@ class ProjectionIntegrationTest {
         @Bean
         ProjectionMapperByteBuddyFactory projectionMapperByteBuddyFactory(ProjectionRepositoryFactory factory) {
             return new ProjectionMapperByteBuddyFactory(factory);
+        }
+
+        @Bean
+        ProjectionRepositoryProxyFactory projectionRepositoryProxyFactory(
+                ProjectionRepositoryFactory projectionRepositoryFactory,
+                ObjectProvider<SqlSessionFactory> sqlSessionFactoryProvider,
+                ObjectProvider<SqlSessionTemplate> sqlSessionTemplateProvider) {
+            return new ProjectionRepositoryProxyFactory(
+                    projectionRepositoryFactory,
+                    sqlSessionFactoryProvider.getIfAvailable(),
+                    sqlSessionTemplateProvider.getIfAvailable()
+            );
         }
     }
 

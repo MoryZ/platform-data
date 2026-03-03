@@ -24,6 +24,8 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 
+import org.apache.ibatis.annotations.Mapper;
+
 /**
  * Auto-register interfaces extending ProjectionRepository in Spring Boot base packages.
  */
@@ -94,6 +96,10 @@ public class ProjectionRepositoryAutoRegistrar implements BeanDefinitionRegistry
         }
 
         if (!repositoryInterface.isInterface() || repositoryInterface == ProjectionRepository.class) {
+            return;
+        }
+
+        if (repositoryInterface.isAnnotationPresent(Mapper.class)) {
             return;
         }
 

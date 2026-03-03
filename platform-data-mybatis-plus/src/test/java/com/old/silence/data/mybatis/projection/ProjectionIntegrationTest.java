@@ -59,6 +59,12 @@ class ProjectionIntegrationTest {
     private ProjectionRepositoryProxyFactory projectionRepositoryProxyFactory;
 
     @Autowired
+    private TestUserHybridCreateMapper mapperScannedHybridMapper;
+
+    @Autowired
+    private TestUserAnnotatedProjectionRepository annotatedProjectionRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Test
@@ -295,6 +301,18 @@ class ProjectionIntegrationTest {
     }
 
     @Test
+    void shouldUseMapperScannedBeanWithoutProjectionFactoryConflict() {
+        TestUser entity = new TestUser();
+        entity.setUsername("user_mapper_scanned_no_conflict");
+        entity.setEnabled(true);
+        entity.setStatus(TestUserStatus.ACTIVE);
+
+        int created = mapperScannedHybridMapper.create(entity);
+        assertThat(created).isEqualTo(1);
+        assertThat(entity.getId()).isNotNull();
+    }
+
+    @Test
     void shouldFallbackToProjectionRepositoryInsertWhenNoMyBatisMappedStatement() {
         TestUserPlainProjectionRepository repository =
                 projectionRepositoryProxyFactory.create(TestUserPlainProjectionRepository.class);
@@ -314,6 +332,39 @@ class ProjectionIntegrationTest {
             entity.getId()
         );
         assertThat(persistedStatus).isEqualTo(1);
+    }
+
+    @Test
+    void shouldSupportAnnotatedMethodAndProjectionMethodsWithoutMapperAnnotation() {
+        TestUser entity = new TestUser();
+        entity.setUsername("user_annotation_projection_combo");
+        entity.setEnabled(true);
+        entity.setStatus(TestUserStatus.ACTIVE);
+
+        assertThat(annotatedProjectionRepository.createAnnotated(entity)).isEqualTo(1);
+        assertThat(entity.getId()).isNotNull();
+
+        Integer customMethodStatus = jdbcTemplate.queryForObject(
+                "select status from test_user where id = ?",
+                Integer.class,
+                entity.getId()
+        );
+        assertThat(customMethodStatus).isEqualTo(2);
+
+        TestUser fallbackEntity = new TestUser();
+        fallbackEntity.setUsername("user_annotation_projection_fallback");
+        fallbackEntity.setEnabled(true);
+        fallbackEntity.setStatus(TestUserStatus.ACTIVE);
+
+        assertThat(annotatedProjectionRepository.insert(fallbackEntity)).isEqualTo(1);
+        assertThat(fallbackEntity.getId()).isNotNull();
+
+        Integer projectionFallbackStatus = jdbcTemplate.queryForObject(
+                "select status from test_user where id = ?",
+                Integer.class,
+                fallbackEntity.getId()
+        );
+        assertThat(projectionFallbackStatus).isEqualTo(1);
     }
 
     @Test

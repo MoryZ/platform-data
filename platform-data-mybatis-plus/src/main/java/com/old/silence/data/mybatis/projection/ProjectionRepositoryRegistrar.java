@@ -17,6 +17,8 @@ import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
 
+import org.apache.ibatis.annotations.Mapper;
+
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -77,6 +79,10 @@ public class ProjectionRepositoryRegistrar implements ImportBeanDefinitionRegist
         }
 
         if (!repositoryInterface.isInterface() || repositoryInterface == ProjectionRepository.class) {
+            return;
+        }
+
+        if (repositoryInterface.isAnnotationPresent(Mapper.class)) {
             return;
         }
 

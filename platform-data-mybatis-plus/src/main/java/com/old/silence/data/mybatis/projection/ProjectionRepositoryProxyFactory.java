@@ -1,5 +1,6 @@
 package com.old.silence.data.mybatis.projection;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.binding.BindingException;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -9,6 +10,7 @@ import org.springframework.core.ResolvableType;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.Map;
 import java.util.Objects;
@@ -83,31 +85,53 @@ public class ProjectionRepositoryProxyFactory {
             return InvocationHandler.invokeDefault(proxy, method, args);
         }
 
+        Throwable lastError = null;
         if (mapperDelegate != null) {
             try {
                 return method.invoke(mapperDelegate, args);
             } catch (InvocationTargetException ex) {
                 Throwable targetException = ex.getTargetException();
-                if (!isInvalidBoundStatement(targetException)) {
+                if (isInvalidBoundStatement(targetException)) {
+                    lastError = targetException;
+                } else {
                     throw targetException;
+                }
+            } catch (Throwable ex) {
+                if (isBindingException(ex)) {
+                    lastError = ex;
+                } else {
+                    throw ex;
                 }
             }
         }
 
-        try {
-            Method delegateMethod = ProjectionRepository.class.getMethod(method.getName(), method.getParameterTypes());
-            return delegateMethod.invoke(delegate, args);
-        } catch (NoSuchMethodException ex) {
+        Method delegateMethod = resolveProjectionRepositoryMethod(method);
+        if (delegateMethod == null) {
+            if (lastError != null) {
+                throw new UnsupportedOperationException(
+                        "Unsupported repository method: " + method
+                                + ", not found in MyBatis mapped statements and not defined by ProjectionRepository",
+                        lastError
+                );
+            }
             throw new UnsupportedOperationException(
-                    "Unsupported repository method: " + method
-                            + ", not found in MyBatis mapped statements and not defined by ProjectionRepository",
-                    ex
+                "Unsupported repository method: " + method
+                    + ", not found in MyBatis mapped statements and not defined by ProjectionRepository"
             );
         }
+        return delegateMethod.invoke(delegate, args);
     }
 
     private Object createMapperDelegate(Class<?> repositoryInterface) {
         if (sqlSessionFactory == null || sqlSessionTemplate == null) {
+            return null;
+        }
+
+        // Create mapper delegate if interface has @Mapper or any MyBatis SQL annotations
+        boolean hasMapperAnnotation = repositoryInterface.isAnnotationPresent(Mapper.class);
+        boolean hasMyBatisMethods = hasMyBatisSqlAnnotations(repositoryInterface);
+
+        if (!hasMapperAnnotation && !hasMyBatisMethods) {
             return null;
         }
 
@@ -123,10 +147,105 @@ public class ProjectionRepositoryProxyFactory {
         return sqlSessionTemplate.getMapper(repositoryInterface);
     }
 
+    private boolean hasMyBatisSqlAnnotations(Class<?> repositoryInterface) {
+        for (Method method : repositoryInterface.getDeclaredMethods()) {
+            if (method.isAnnotationPresent(org.apache.ibatis.annotations.Select.class)
+                    || method.isAnnotationPresent(org.apache.ibatis.annotations.Insert.class)
+                    || method.isAnnotationPresent(org.apache.ibatis.annotations.Update.class)
+                    || method.isAnnotationPresent(org.apache.ibatis.annotations.Delete.class)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean isInvalidBoundStatement(Throwable throwable) {
-        return throwable instanceof BindingException
-                && throwable.getMessage() != null
-                && throwable.getMessage().contains("Invalid bound statement");
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof BindingException
+                    && current.getMessage() != null
+                    && current.getMessage().contains("Invalid bound statement")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean isBindingException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof BindingException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private Method resolveProjectionRepositoryMethod(Method method) {
+        Method[] methods = ProjectionRepository.class.getMethods();
+        for (Method candidate : methods) {
+            if (candidate.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            if (!candidate.getName().equals(method.getName())) {
+                continue;
+            }
+            if (Modifier.isStatic(candidate.getModifiers())) {
+                continue;
+            }
+            if (parametersCompatible(candidate.getParameterTypes(), method.getParameterTypes())) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private boolean parametersCompatible(Class<?>[] candidateTypes, Class<?>[] methodTypes) {
+        if (candidateTypes.length != methodTypes.length) {
+            return false;
+        }
+
+        for (int i = 0; i < candidateTypes.length; i++) {
+            Class<?> candidateType = wrapPrimitive(candidateTypes[i]);
+            Class<?> methodType = wrapPrimitive(methodTypes[i]);
+            if (!candidateType.isAssignableFrom(methodType)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private Class<?> wrapPrimitive(Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        if (type == int.class) {
+            return Integer.class;
+        }
+        if (type == long.class) {
+            return Long.class;
+        }
+        if (type == boolean.class) {
+            return Boolean.class;
+        }
+        if (type == byte.class) {
+            return Byte.class;
+        }
+        if (type == short.class) {
+            return Short.class;
+        }
+        if (type == char.class) {
+            return Character.class;
+        }
+        if (type == float.class) {
+            return Float.class;
+        }
+        if (type == double.class) {
+            return Double.class;
+        }
+        return Void.class;
     }
 
     private Object invokeObjectMethod(Object proxy,

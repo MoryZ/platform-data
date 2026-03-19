@@ -5,9 +5,15 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.old.silence.data.commons.handler.GenericEnumTypeHandler;
+import jakarta.persistence.OneToMany;
+
+import java.util.List;
 
 /**
  * Test entity for projection integration tests.
+ *
+ * Role-association model: User -> UserRole -> Role via {@link #userRoles} (explicit join entity).
+ * Department-association model: User -> UserDepartment -> Department via {@link #userDepartments} (explicit join entity).
  */
 @TableName("test_user")
 public class TestUser {
@@ -22,6 +28,12 @@ public class TestUser {
 
     @TableField(value = "status", typeHandler = GenericEnumTypeHandler.class)
     private TestUserStatus status;
+
+    @OneToMany(mappedBy = "user")
+    private List<TestUserRole> userRoles;
+
+    @OneToMany(mappedBy = "user")
+    private List<TestUserDepartment> userDepartments;
 
     public Long getId() {
         return id;
@@ -53,5 +65,21 @@ public class TestUser {
 
     public void setStatus(TestUserStatus status) {
         this.status = status;
+    }
+
+    public List<TestUserRole> getUserRoles() {
+        return userRoles;
+    }
+
+    public void setUserRoles(List<TestUserRole> userRoles) {
+        this.userRoles = userRoles;
+    }
+
+    public List<TestUserDepartment> getUserDepartments() {
+        return userDepartments;
+    }
+
+    public void setUserDepartments(List<TestUserDepartment> userDepartments) {
+        this.userDepartments = userDepartments;
     }
 }

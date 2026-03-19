@@ -82,8 +82,19 @@ public class ProjectionRepositoryRegistrar implements ImportBeanDefinitionRegist
             return;
         }
 
+        if (repositoryInterface.isAnnotationPresent(ProjectionNoRepositoryBean.class)) {
+            return;
+        }
+
         if (repositoryInterface.isAnnotationPresent(Mapper.class)) {
             return;
+        }
+
+        if (!com.baomidou.mybatisplus.core.mapper.BaseMapper.class.isAssignableFrom(repositoryInterface)) {
+            throw new IllegalStateException(
+                "ProjectionRepository subtype '" + repositoryInterface.getName() + "' must also extend " +
+                "ProjectionMapperRepository (or BaseMapper) so that MyBatis-Plus can initialize TableInfo. " +
+                "Change: 'extends ProjectionRepository<T, ID>' -> 'extends ProjectionMapperRepository<T, ID>'");
         }
 
         RootBeanDefinition beanDefinition = new RootBeanDefinition(ProjectionRepositoryFactoryBean.class);

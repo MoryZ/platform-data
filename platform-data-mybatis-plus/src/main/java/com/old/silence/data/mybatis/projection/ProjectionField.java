@@ -8,6 +8,7 @@ import org.apache.ibatis.type.TypeHandler;
 public class ProjectionField {
 
     private final String propertyName;
+    private final String selectExpression;
     private final String columnName;
     private final Class<?> javaType;
     private final Class<? extends TypeHandler<?>> typeHandler;
@@ -15,7 +16,13 @@ public class ProjectionField {
 
     public ProjectionField(String propertyName, String columnName, Class<?> javaType,
                            Class<? extends TypeHandler<?>> typeHandler, boolean idField) {
+        this(propertyName, columnName, columnName, javaType, typeHandler, idField);
+    }
+
+    public ProjectionField(String propertyName, String selectExpression, String columnName, Class<?> javaType,
+                           Class<? extends TypeHandler<?>> typeHandler, boolean idField) {
         this.propertyName = propertyName;
+        this.selectExpression = selectExpression;
         this.columnName = columnName;
         this.javaType = javaType;
         this.typeHandler = typeHandler;
@@ -28,6 +35,10 @@ public class ProjectionField {
 
     public String getColumnName() {
         return columnName;
+    }
+
+    public String getSelectExpression() {
+        return selectExpression;
     }
 
     public Class<?> getJavaType() {

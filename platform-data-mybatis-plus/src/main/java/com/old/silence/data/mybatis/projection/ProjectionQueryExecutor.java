@@ -114,8 +114,9 @@ public class ProjectionQueryExecutor {
         }
 
         boolean hasAnyFieldToUpdate = tableInfo.getFieldList().stream()
+                .filter(fieldInfo -> ProjectionMappedStatementFactory.isPersistableField(entityType, fieldInfo))
                 .map(TableFieldInfo::getProperty)
-            .anyMatch(property -> beanWrapper.getPropertyValue(property) != null);
+                .anyMatch(property -> beanWrapper.getPropertyValue(property) != null);
         if (!hasAnyFieldToUpdate) {
             return 0;
         }
@@ -192,6 +193,17 @@ public class ProjectionQueryExecutor {
             throw new IllegalArgumentException("No TableInfo found for entity type: " + entityType.getName());
         }
         return tableInfo;
+    }
+
+    public List<Map<String, Object>> selectJoinTablePairs(String joinTableName, String sourceJoinCol,
+                                                          String targetJoinCol, java.util.Collection<?> sourceIds) {
+        String statementId = statementFactory.ensureJoinTableStatement(
+                sqlSessionFactory.getConfiguration(), joinTableName, sourceJoinCol, targetJoinCol);
+        Map<String, Object> params = new HashMap<>();
+        params.put("sourceIds", sourceIds);
+        try (SqlSession session = sqlSessionFactory.openSession()) {
+            return session.selectList(statementId, params);
+        }
     }
 
     public <T> List<Map<String, Object>> selectMaps(Wrapper<T> wrapper, ProjectionMetadata metadata) {

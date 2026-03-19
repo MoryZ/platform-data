@@ -10,17 +10,47 @@ public class ProjectionMetadata {
     private final Class<?> projectionType;
     private final Class<?> entityType;
     private final String tableName;
+    private final String fromClause;
     private final List<ProjectionField> fields;
+    private final List<ProjectionCollectionAssociation> collectionAssociations;
     private final String selectionKey;
+    private final boolean collectionJoinInFrom;
 
     public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
                               List<ProjectionField> fields,
                               String selectionKey) {
+        this(projectionType, entityType, tableName, tableName, fields, List.of(), selectionKey, false);
+    }
+
+    public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
+                              String fromClause,
+                              List<ProjectionField> fields,
+                              String selectionKey) {
+        this(projectionType, entityType, tableName, fromClause, fields, List.of(), selectionKey, false);
+    }
+
+    public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
+                              String fromClause,
+                              List<ProjectionField> fields,
+                              List<ProjectionCollectionAssociation> collectionAssociations,
+                              String selectionKey) {
+        this(projectionType, entityType, tableName, fromClause, fields, collectionAssociations, selectionKey, false);
+    }
+
+    public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
+                              String fromClause,
+                              List<ProjectionField> fields,
+                              List<ProjectionCollectionAssociation> collectionAssociations,
+                              String selectionKey,
+                              boolean collectionJoinInFrom) {
         this.projectionType = projectionType;
         this.entityType = entityType;
         this.tableName = tableName;
+        this.fromClause = fromClause;
         this.fields = fields;
+        this.collectionAssociations = collectionAssociations;
         this.selectionKey = selectionKey;
+        this.collectionJoinInFrom = collectionJoinInFrom;
     }
 
     public Class<?> getProjectionType() {
@@ -40,11 +70,23 @@ public class ProjectionMetadata {
     }
 
     public String getColumnList() {
-        return fields.stream().map(ProjectionField::getColumnName).distinct().reduce((a, b) -> a + ", " + b)
+        return fields.stream().map(ProjectionField::getSelectExpression).distinct().reduce((a, b) -> a + ", " + b)
                 .orElse("*");
+    }
+
+    public String getFromClause() {
+        return fromClause;
     }
 
     public String getSelectionKey() {
         return selectionKey;
+    }
+
+    public List<ProjectionCollectionAssociation> getCollectionAssociations() {
+        return collectionAssociations;
+    }
+
+    public boolean isCollectionJoinInFrom() {
+        return collectionJoinInFrom;
     }
 }

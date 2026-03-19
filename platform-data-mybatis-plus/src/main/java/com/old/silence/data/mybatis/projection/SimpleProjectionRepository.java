@@ -11,16 +11,25 @@ import org.springframework.beans.BeanWrapperImpl;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.LinkedHashSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.StreamSupport;
 
 /**
  * Simple projection repository implementation.
  */
 public class SimpleProjectionRepository<T, ID extends Serializable> implements ProjectionRepository<T, ID> {
+
+    private static final Pattern SQL_QUALIFIER_PATTERN = Pattern.compile("\\b([A-Za-z_][A-Za-z0-9_]*)\\.");
 
     private final Class<T> entityType;
     private final ProjectionMetadataResolver metadataResolver;
@@ -95,12 +104,21 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
     public <P> List<P> findByQuery(Wrapper<T> queryWrapper, Class<P> projectionType) {
         Objects.requireNonNull(queryWrapper, "Query wrapper must not be null");
 
-        ProjectionMetadata metadata = metadataResolver.resolve(projectionType, entityType, Collections.emptyList());
+        ProjectionMetadata metadata = metadataResolver.resolve(projectionType,
+                entityType,
+                Collections.emptyList(),
+                extractConditionAssociationHints(queryWrapper));
         if (projectionType.isInterface()) {
+            if (!metadata.getCollectionAssociations().isEmpty()) {
+                throw new IllegalArgumentException("Collection association projection for interface type is not supported yet: "
+                        + projectionType.getName());
+            }
             List<java.util.Map<String, Object>> resultMaps = queryExecutor.selectMaps(queryWrapper, metadata);
             return InterfaceProjectionFactory.createList(projectionType, resultMaps);
         }
-        return queryExecutor.select(queryWrapper, metadata);
+        List<P> results = queryExecutor.select(queryWrapper, metadata);
+        loadCollectionAssociations(results, metadata);
+        return results;
     }
 
     @Override
@@ -109,8 +127,15 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
         Objects.requireNonNull(page, "Page must not be null");
         Wrapper<T> dataWrapper = applyPageOrders(queryWrapper, page);
 
-        ProjectionMetadata metadata = metadataResolver.resolve(projectionType, entityType, Collections.emptyList());
+        ProjectionMetadata metadata = metadataResolver.resolve(projectionType,
+                entityType,
+                Collections.emptyList(),
+                extractConditionAssociationHints(queryWrapper));
         if (projectionType.isInterface()) {
+            if (!metadata.getCollectionAssociations().isEmpty()) {
+                throw new IllegalArgumentException("Collection association projection for interface type is not supported yet: "
+                        + projectionType.getName());
+            }
             IPage<java.util.Map<String, Object>> mapPage = queryExecutor.selectPageMaps(page, dataWrapper, queryWrapper, metadata);
             List<P> records = InterfaceProjectionFactory.createList(projectionType, mapPage.getRecords());
 
@@ -120,7 +145,144 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
             result.setTotal(mapPage.getTotal());
             return result;
         }
-        return queryExecutor.selectPage(page, dataWrapper, queryWrapper, metadata);
+        IPage<P> result = queryExecutor.selectPage(page, dataWrapper, queryWrapper, metadata);
+        loadCollectionAssociations(result.getRecords(), metadata);
+        return result;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private <P> void loadCollectionAssociations(List<P> records, ProjectionMetadata metadata) {
+        if (records == null || records.isEmpty() || metadata.getCollectionAssociations().isEmpty()) {
+            return;
+        }
+
+        for (ProjectionCollectionAssociation association : metadata.getCollectionAssociations()) {
+            List<Object> sourceKeys = new ArrayList<>();
+            Map<Object, List<P>> sourceByKey = new HashMap<>();
+            for (P record : records) {
+                BeanWrapperImpl beanWrapper = new BeanWrapperImpl(record);
+                Object sourceKey = beanWrapper.getPropertyValue(association.getSourceKeyProperty());
+                if (sourceKey == null) {
+                    continue;
+                }
+                sourceByKey.computeIfAbsent(sourceKey, ignored -> {
+                    sourceKeys.add(sourceKey);
+                    return new ArrayList<>();
+                }).add(record);
+            }
+
+            if (sourceKeys.isEmpty()) {
+                continue;
+            }
+
+            if (association.getJoinTableName() != null) {
+                // ManyToMany via join table: two-step loading
+                List<Map<String, Object>> pairs = queryExecutor.selectJoinTablePairs(
+                        association.getJoinTableName(),
+                        association.getJoinTableSourceCol(),
+                        association.getJoinTableTargetCol(),
+                        sourceKeys);
+                if (pairs.isEmpty()) {
+                    for (List<P> grouped : sourceByKey.values()) {
+                        for (P record : grouped) {
+                            BeanWrapperImpl bw = new BeanWrapperImpl(record);
+                            Object curr = bw.getPropertyValue(association.getProjectionPropertyName());
+                            if (curr instanceof Collection) {
+                                ((Collection) curr).clear();
+                            } else {
+                                bw.setPropertyValue(association.getProjectionPropertyName(), new ArrayList<>());
+                            }
+                        }
+                    }
+                    continue;
+                }
+                List<Object> targetIds = new ArrayList<>();
+                Map<String, List<String>> sourceToTargetIds = new HashMap<>();
+                for (Map<String, Object> pair : pairs) {
+                    Object src = getMapValueIgnoreCase(pair, association.getJoinTableSourceCol());
+                    Object tgt = getMapValueIgnoreCase(pair, association.getJoinTableTargetCol());
+                    if (src == null || tgt == null) {
+                        continue;
+                    }
+                    String srcStr = src.toString();
+                    String tgtStr = tgt.toString();
+                    sourceToTargetIds.computeIfAbsent(srcStr, k -> new ArrayList<>()).add(tgtStr);
+                    if (!targetIds.contains(tgt)) {
+                        targetIds.add(tgt);
+                    }
+                }
+                if (targetIds.isEmpty()) {
+                    continue;
+                }
+                TableInfo targetTableInfo = TableInfoHelper.getTableInfo(association.getTargetEntityType());
+                QueryWrapper targetQuery = new QueryWrapper();
+                targetQuery.in(targetTableInfo.getKeyColumn(), targetIds);
+                ProjectionMetadata childMetadata = metadataResolver.resolve(association.getElementType(),
+                        association.getTargetEntityType(), Collections.emptyList());
+                List<?> children = queryExecutor.select(targetQuery, childMetadata);
+                Map<String, Object> targetByStrId = new HashMap<>();
+                for (Object child : children) {
+                    Object id = new BeanWrapperImpl(child).getPropertyValue(targetTableInfo.getKeyProperty());
+                    if (id != null) {
+                        targetByStrId.put(id.toString(), child);
+                    }
+                }
+                for (Map.Entry<Object, List<P>> entry : sourceByKey.entrySet()) {
+                    List<String> targetStrIds = sourceToTargetIds.getOrDefault(
+                            entry.getKey().toString(), Collections.emptyList());
+                    List<Object> related = new ArrayList<>();
+                    for (String tId : targetStrIds) {
+                        Object t = targetByStrId.get(tId);
+                        if (t != null) {
+                            related.add(t);
+                        }
+                    }
+                    for (P record : entry.getValue()) {
+                        BeanWrapperImpl bw = new BeanWrapperImpl(record);
+                        Object curr = bw.getPropertyValue(association.getProjectionPropertyName());
+                        if (curr instanceof Collection) {
+                            ((Collection) curr).clear();
+                            ((Collection) curr).addAll(related);
+                        } else {
+                            bw.setPropertyValue(association.getProjectionPropertyName(), new ArrayList<>(related));
+                        }
+                    }
+                }
+            } else {
+                // OneToMany: FK is on target side
+                QueryWrapper childrenQuery = new QueryWrapper();
+                childrenQuery.in(association.getTargetFkColumn(), sourceKeys);
+
+                ProjectionMetadata childMetadata = metadataResolver.resolve(association.getElementType(),
+                        association.getTargetEntityType(),
+                        Collections.emptyList());
+                List<?> children = queryExecutor.select(childrenQuery, childMetadata);
+
+                Map<Object, List<Object>> childrenBySourceKey = new HashMap<>();
+                for (Object child : children) {
+                    BeanWrapperImpl childWrapper = new BeanWrapperImpl(child);
+                    Object fk = childWrapper.getPropertyValue(association.getTargetFkProperty());
+                    if (fk == null) {
+                        continue;
+                    }
+                    childrenBySourceKey.computeIfAbsent(fk, ignored -> new ArrayList<>()).add(child);
+                }
+
+                for (Map.Entry<Object, List<P>> entry : sourceByKey.entrySet()) {
+                    List<Object> related = childrenBySourceKey.getOrDefault(entry.getKey(), Collections.emptyList());
+                    for (P record : entry.getValue()) {
+                        BeanWrapperImpl beanWrapper = new BeanWrapperImpl(record);
+                        Object currentValue = beanWrapper.getPropertyValue(association.getProjectionPropertyName());
+                        if (currentValue instanceof Collection) {
+                            ((Collection) currentValue).clear();
+                            ((Collection) currentValue).addAll(related);
+                        } else {
+                            beanWrapper.setPropertyValue(association.getProjectionPropertyName(), new ArrayList<>(related));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @Override
@@ -145,7 +307,7 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
     }
 
     @Override
-    public <S extends T> int insert(S entity) {
+    public int insert(T entity) {
         Objects.requireNonNull(entity, "Entity must not be null");
         return queryExecutor.insert(entity, entityType);
     }
@@ -194,7 +356,7 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
     }
 
     @Override
-    public int deleteById(ID id) {
+    public int deleteById(Serializable id) {
         Objects.requireNonNull(id, "Id must not be null");
         return queryExecutor.deleteById(id, entityType);
     }
@@ -281,5 +443,36 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
             throw new IllegalArgumentException("No @TableId found for entity type: " + entityType.getName());
         }
         return tableInfo;
+    }
+
+    private static Object getMapValueIgnoreCase(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        if (v != null) return v;
+        v = map.get(key.toUpperCase());
+        if (v != null) return v;
+        return map.get(key.toLowerCase());
+    }
+
+    private List<String> extractConditionAssociationHints(Wrapper<T> queryWrapper) {
+        String sqlSegment = queryWrapper.getCustomSqlSegment();
+        if (sqlSegment == null || sqlSegment.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        Set<String> qualifiers = new LinkedHashSet<>();
+        Matcher matcher = SQL_QUALIFIER_PATTERN.matcher(sqlSegment);
+        while (matcher.find()) {
+            String qualifier = matcher.group(1);
+            if (qualifier == null || qualifier.isBlank()) {
+                continue;
+            }
+            if ("t0".equalsIgnoreCase(qualifier)
+                    || "ew".equalsIgnoreCase(qualifier)
+                    || "paramNameValuePairs".equalsIgnoreCase(qualifier)) {
+                continue;
+            }
+            qualifiers.add(qualifier);
+        }
+        return qualifiers.isEmpty() ? Collections.emptyList() : new ArrayList<>(qualifiers);
     }
 }

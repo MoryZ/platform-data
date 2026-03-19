@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.old.silence.data.commons.converter.QueryWrapperConverter;
 import com.old.silence.data.mybatis.test.DataMyBatisTest;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,7 @@ import org.springframework.test.context.ContextConfiguration;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,6 +36,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration tests for projection query support.
+ *
+ * Association models in this suite:
+ * - User -> UserRole -> Role (explicit join entity, composite-key table)
+ * - User -> UserDepartment -> Department (explicit join entity, many-to-many through intermediate table)
  */
 @DataMyBatisTest
 @MapperScan(basePackages = "com.old.silence.data.mybatis.projection")
@@ -59,10 +65,10 @@ class ProjectionIntegrationTest {
     private ProjectionRepositoryProxyFactory projectionRepositoryProxyFactory;
 
     @Autowired
-    private TestUserHybridCreateMapper mapperScannedHybridMapper;
+    private ProjectionMetadataResolver projectionMetadataResolver;
 
     @Autowired
-    private TestUserAnnotatedProjectionRepository annotatedProjectionRepository;
+    private TestUserHybridCreateMapper mapperScannedHybridMapper;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -336,12 +342,16 @@ class ProjectionIntegrationTest {
 
     @Test
     void shouldSupportAnnotatedMethodAndProjectionMethodsWithoutMapperAnnotation() {
+        // Create the repository dynamically to avoid MyBatis mapper auto-registration
+        TestUserAnnotatedProjectionRepository localAnnotatedRepo = 
+            projectionRepositoryProxyFactory.create(TestUserAnnotatedProjectionRepository.class);
+
         TestUser entity = new TestUser();
         entity.setUsername("user_annotation_projection_combo");
         entity.setEnabled(true);
         entity.setStatus(TestUserStatus.ACTIVE);
 
-        assertThat(annotatedProjectionRepository.createAnnotated(entity)).isEqualTo(1);
+        assertThat(localAnnotatedRepo.createAnnotated(entity)).isEqualTo(1);
         assertThat(entity.getId()).isNotNull();
 
         Integer customMethodStatus = jdbcTemplate.queryForObject(
@@ -356,7 +366,7 @@ class ProjectionIntegrationTest {
         fallbackEntity.setEnabled(true);
         fallbackEntity.setStatus(TestUserStatus.ACTIVE);
 
-        assertThat(annotatedProjectionRepository.insert(fallbackEntity)).isEqualTo(1);
+        assertThat(localAnnotatedRepo.insert(fallbackEntity)).isEqualTo(1);
         assertThat(fallbackEntity.getId()).isNotNull();
 
         Integer projectionFallbackStatus = jdbcTemplate.queryForObject(

@@ -18,6 +18,7 @@ import java.util.List;
 /**
  * Projection repository API for MyBatis Plus.
  */
+@ProjectionNoRepositoryBean
 public interface ProjectionRepository<T, ID extends Serializable> {
 
     Optional<T> findById(ID id);
@@ -54,7 +55,7 @@ public interface ProjectionRepository<T, ID extends Serializable> {
 
     long countByQuery(Wrapper<T> queryWrapper);
 
-    <S extends T> int insert(S entity);
+    int insert(T entity);
 
     @Transactional
     <S extends T> int insertAll(Iterable<S> entities);
@@ -75,7 +76,7 @@ public interface ProjectionRepository<T, ID extends Serializable> {
 
     <S extends T> int save(S entity);
 
-    int deleteById(ID id);
+    int deleteById(Serializable id);
 
     int delete(T entity);
 

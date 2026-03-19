@@ -1,7 +1,9 @@
 package com.old.silence.data.mybatis.projection;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.metadata.TableFieldInfo;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.core.toolkit.Constants;
 import org.apache.ibatis.executor.keygen.Jdbc3KeyGenerator;
 import org.apache.ibatis.executor.keygen.NoKeyGenerator;
@@ -12,9 +14,13 @@ import org.apache.ibatis.mapping.SqlSource;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.scripting.LanguageDriver;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Build and register MappedStatement for projection queries.
@@ -32,6 +38,16 @@ class ProjectionMappedStatementFactory {
     private static final String DELETE_BY_ID_STATEMENT_SUFFIX = ".deleteEntityById";
     private static final String DELETE_BY_QUERY_STATEMENT_SUFFIX = ".deleteEntityByQuery";
     private static final String DELETE_ALL_STATEMENT_SUFFIX = ".deleteAllEntity";
+        private static final Set<String> RELATION_ANNOTATIONS = Set.of(
+            "jakarta.persistence.ManyToOne",
+            "jakarta.persistence.OneToOne",
+            "jakarta.persistence.OneToMany",
+            "jakarta.persistence.ManyToMany",
+            "javax.persistence.ManyToOne",
+            "javax.persistence.OneToOne",
+            "javax.persistence.OneToMany",
+            "javax.persistence.ManyToMany"
+        );
 
     private final ProjectionResultMapRegistry resultMapRegistry;
 
@@ -46,7 +62,8 @@ class ProjectionMappedStatementFactory {
         }
 
         String columnList = metadata.getColumnList();
-        String sql = "<script>SELECT " + columnList + " FROM " + metadata.getTableName() +
+        String selectKeyword = metadata.isCollectionJoinInFrom() ? "SELECT DISTINCT " : "SELECT ";
+        String sql = "<script>" + selectKeyword + columnList + " FROM " + metadata.getFromClause() +
                 " ${" + Constants.WRAPPER + ".customSqlSegment}</script>";
 
         LanguageDriver languageDriver = configuration.getDefaultScriptingLanguageInstance();
@@ -68,7 +85,15 @@ class ProjectionMappedStatementFactory {
             return statementId;
         }
 
-        String sql = "<script>SELECT COUNT(1) FROM " + metadata.getTableName() +
+        String countExpr = "COUNT(1)";
+        if (metadata.isCollectionJoinInFrom()) {
+            TableInfo tableInfo = TableInfoHelper.getTableInfo(metadata.getEntityType());
+            if (tableInfo != null && tableInfo.getKeyColumn() != null && !tableInfo.getKeyColumn().isBlank()) {
+                countExpr = "COUNT(DISTINCT t0." + tableInfo.getKeyColumn() + ")";
+            }
+        }
+
+        String sql = "<script>SELECT " + countExpr + " FROM " + metadata.getFromClause() +
                 " ${" + Constants.WRAPPER + ".customSqlSegment}</script>";
 
         LanguageDriver languageDriver = configuration.getDefaultScriptingLanguageInstance();
@@ -96,7 +121,8 @@ class ProjectionMappedStatementFactory {
         }
 
         String columnList = metadata.getColumnList();
-        String sql = "<script>SELECT " + columnList + " FROM " + metadata.getTableName() +
+        String selectKeyword = metadata.isCollectionJoinInFrom() ? "SELECT DISTINCT " : "SELECT ";
+        String sql = "<script>" + selectKeyword + columnList + " FROM " + metadata.getFromClause() +
                 " ${" + Constants.WRAPPER + ".customSqlSegment}</script>";
 
         LanguageDriver languageDriver = configuration.getDefaultScriptingLanguageInstance();
@@ -113,6 +139,34 @@ class ProjectionMappedStatementFactory {
                 SqlCommandType.SELECT);
         builder.resultMaps(Collections.singletonList(configuration.getResultMap(resultMapId)));
 
+        configuration.addMappedStatement(builder.build());
+        return statementId;
+    }
+
+    String ensureJoinTableStatement(Configuration configuration, String joinTableName,
+                                    String sourceJoinCol, String targetJoinCol) {
+        String statementId = "joinTable." + joinTableName + "." + sourceJoinCol + "." + targetJoinCol;
+        if (configuration.hasStatement(statementId)) {
+            return statementId;
+        }
+        String sql = "<script>SELECT " + sourceJoinCol + ", " + targetJoinCol
+                + " FROM " + joinTableName
+                + " WHERE " + sourceJoinCol
+                + " IN <foreach item='id' collection='sourceIds' open='(' separator=',' close=')'>#{id}</foreach></script>";
+
+        LanguageDriver languageDriver = configuration.getDefaultScriptingLanguageInstance();
+        SqlSource sqlSource = languageDriver.createSqlSource(configuration, sql, Map.class);
+
+        String resultMapId = statementId + ".resultMap";
+        if (!configuration.hasResultMap(resultMapId)) {
+            ResultMap resultMap = new ResultMap.Builder(configuration, resultMapId, java.util.HashMap.class,
+                    Collections.emptyList()).build();
+            configuration.addResultMap(resultMap);
+        }
+
+        MappedStatement.Builder builder = new MappedStatement.Builder(configuration, statementId, sqlSource,
+                SqlCommandType.SELECT);
+        builder.resultMaps(Collections.singletonList(configuration.getResultMap(resultMapId)));
         configuration.addMappedStatement(builder.build());
         return statementId;
     }
@@ -135,7 +189,7 @@ class ProjectionMappedStatementFactory {
                     .append(keyProperty).append("},</if>");
         }
 
-        for (TableFieldInfo fieldInfo : tableInfo.getFieldList()) {
+        for (TableFieldInfo fieldInfo : persistableFieldInfos(entityType, tableInfo)) {
             columns.append(fieldInfo.getColumn()).append(",");
             values.append("#{").append(buildParameterExpression(fieldInfo)).append("},");
         }
@@ -180,7 +234,7 @@ class ProjectionMappedStatementFactory {
         }
 
         StringBuilder setClause = new StringBuilder();
-        for (TableFieldInfo fieldInfo : tableInfo.getFieldList()) {
+        for (TableFieldInfo fieldInfo : persistableFieldInfos(entityType, tableInfo)) {
             setClause.append("<if test='").append(fieldInfo.getProperty()).append(" != null'>")
                     .append(fieldInfo.getColumn()).append("=#{").append(buildParameterExpression(fieldInfo)).append("},</if>");
         }
@@ -216,7 +270,7 @@ class ProjectionMappedStatementFactory {
         }
 
         StringBuilder setClause = new StringBuilder();
-        for (TableFieldInfo fieldInfo : tableInfo.getFieldList()) {
+        for (TableFieldInfo fieldInfo : persistableFieldInfos(entityType, tableInfo)) {
             setClause.append(fieldInfo.getColumn())
                     .append("=#{")
                     .append(buildParameterExpression(fieldInfo))
@@ -258,6 +312,52 @@ class ProjectionMappedStatementFactory {
                 return handlerClass;
             }
         } catch (ReflectiveOperationException ignored) {
+        }
+        return null;
+    }
+
+    static boolean isPersistableField(Class<?> entityType, TableFieldInfo fieldInfo) {
+        Field field = findField(entityType, fieldInfo.getProperty());
+        if (field == null) {
+            return true;
+        }
+
+        if (Collection.class.isAssignableFrom(field.getType())) {
+            return false;
+        }
+
+        if (hasRelationAnnotation(field)) {
+            return false;
+        }
+
+        return !isEntityReference(field);
+    }
+
+    private static List<TableFieldInfo> persistableFieldInfos(Class<?> entityType, TableInfo tableInfo) {
+        return tableInfo.getFieldList().stream()
+                .filter(fieldInfo -> isPersistableField(entityType, fieldInfo))
+                .toList();
+    }
+
+    private static boolean hasRelationAnnotation(Field field) {
+        return java.util.Arrays.stream(field.getAnnotations())
+                .map(annotation -> annotation.annotationType().getName())
+                .anyMatch(RELATION_ANNOTATIONS::contains);
+    }
+
+    private static boolean isEntityReference(Field field) {
+        Class<?> fieldType = field.getType();
+        return fieldType.getAnnotation(TableName.class) != null;
+    }
+
+    private static Field findField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null && current != Object.class) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
         }
         return null;
     }

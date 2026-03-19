@@ -48,7 +48,6 @@ public class ProjectionMapperByteBuddyFactory {
         ClassLoader classLoader = mapperInterface.getClassLoader();
         String cacheKey = mapperInterface.getName() + "#" + entityType.getName();
 
-        cleanupStaleEntries();
         ConcurrentMap<String, WeakReference<Object>> cacheSegment = getOrCreateCacheSegment(classLoader);
         Object cached = dereference(cacheSegment.get(cacheKey));
         if (cached != null) {
@@ -94,10 +93,7 @@ public class ProjectionMapperByteBuddyFactory {
 
     private void cleanupStaleEntries() {
         synchronized (cacheByClassLoader) {
-            cacheByClassLoader.entrySet().removeIf(entry -> {
-                cleanupStaleEntries(entry.getValue());
-                return entry.getValue().isEmpty();
-            });
+            cacheByClassLoader.values().forEach(this::cleanupStaleEntries);
         }
     }
 

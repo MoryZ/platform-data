@@ -5,7 +5,10 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
+import com.baomidou.mybatisplus.autoconfigure.MybatisPlusPropertiesCustomizer;
 import com.baomidou.mybatisplus.annotation.DbType;
+import com.baomidou.mybatisplus.core.config.GlobalConfig;
+import com.baomidou.mybatisplus.core.handlers.AnnotationHandler;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.baomidou.mybatisplus.core.injector.AbstractSqlInjector;
 import com.baomidou.mybatisplus.core.injector.DefaultSqlInjector;
@@ -20,6 +23,7 @@ import com.old.silence.data.commons.handler.AuditorMetaObjectHandler;
 import com.old.silence.data.commons.handler.CompositeMetaObjectHandler;
 import com.old.silence.data.commons.handler.CustomTenantHandler;
 import com.old.silence.data.commons.handler.DefaultMetaObjectHandler;
+import com.old.silence.data.commons.handler.AssociationFieldIgnoreAnnotationHandler;
 import com.old.silence.data.commons.handler.TenantMetaObjectHandler;
 import com.old.silence.data.commons.injecter.CustomSqlInjector;
 import com.old.silence.data.commons.tenant.TenantTableRegistry;
@@ -32,6 +36,24 @@ import java.util.List;
  */
 @AutoConfiguration
 public class MybatisPlusConfig {
+
+    @Bean
+    @ConditionalOnMissingBean(AnnotationHandler.class)
+    public AnnotationHandler annotationHandler() {
+        return new AssociationFieldIgnoreAnnotationHandler();
+    }
+
+    @Bean
+    public MybatisPlusPropertiesCustomizer mybatisPlusPropertiesCustomizer(AnnotationHandler annotationHandler) {
+        return properties -> {
+            GlobalConfig globalConfig = properties.getGlobalConfig();
+            if (globalConfig == null) {
+                globalConfig = new GlobalConfig();
+            }
+            globalConfig.setAnnotationHandler(annotationHandler);
+            properties.setGlobalConfig(globalConfig);
+        };
+    }
 
     @Bean
     public TenantTableRegistry tenantTableRegistry() {

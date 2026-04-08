@@ -127,11 +127,13 @@ public class ProjectionRepositoryProxyFactory {
             return null;
         }
 
-        // Create mapper delegate if interface has @Mapper or any MyBatis SQL annotations
+        // Create mapper delegate for BaseMapper-style repositories or interfaces with explicit MyBatis mappings.
+        boolean isBaseMapperRepository = com.baomidou.mybatisplus.core.mapper.BaseMapper.class
+                .isAssignableFrom(repositoryInterface);
         boolean hasMapperAnnotation = repositoryInterface.isAnnotationPresent(Mapper.class);
         boolean hasMyBatisMethods = hasMyBatisSqlAnnotations(repositoryInterface);
 
-        if (!hasMapperAnnotation && !hasMyBatisMethods) {
+        if (!isBaseMapperRepository && !hasMapperAnnotation && !hasMyBatisMethods) {
             return null;
         }
 

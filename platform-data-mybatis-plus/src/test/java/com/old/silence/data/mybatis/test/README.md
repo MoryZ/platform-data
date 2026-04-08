@@ -4,6 +4,14 @@
 
 这是一个专为 MyBatis Plus 设计的测试框架，提供了完整的 CRUD 操作和投影查询测试支持。
 
+## 测试目录约定 / Test Package Layout
+
+1. 真正的 JUnit 测试类统一放在 `com.old.silence.data.mybatis.test.projection` 包下。
+2. projection 测试夹具按角色拆分到 `com.old.silence.data.mybatis.test.fixture.*`：`entity`、`mapper`、`projection`、`query`。
+3. 如果某个测试需要验证 projection 内部实现细节，也优先把测试类放在 `test` 包，通过公开契约或反射访问内部 helper，而不是继续把测试类和夹具混放。
+4. 非 JUnit 的 ByteBuddy / 签名校验接口统一使用 `*Contract` 命名，避免和真实测试类混淆。
+5. projection 目标类型统一命名：interface 用 `*View`，class/record/final 用 `*Dto`。
+
 ## 关联建模约定（Projection 测试）
 
 - 推荐主路径：`User -> UserRole -> Role`（显式中间实体，适配联合主键中间表）
@@ -254,6 +262,34 @@ SELECT * FROM users WHERE id = 1  -- 查询所有字段后过滤
 
 这确保了真正的性能优化！
 
+## projectionType 支持矩阵 / projectionType Support Matrix
+
+当前 `Class<?> projectionType` 已支持以下目标类型：
+
+The current `Class<?> projectionType` supports the following target forms:
+
+1. `interface` 投影 / interface projection
+    - 适合只读视图。
+    - 类型转换在物化阶段前置完成，不再主要依赖 getter 触发转换。
+
+2. 普通可变 DTO / mutable DTO class
+    - 继续沿用 bean/property 映射路径。
+    - 适合已有 setter 风格 DTO。
+
+3. `record` DTO / record projection
+    - 通过 canonical constructor 直接物化。
+    - 不需要 service 层二次转换。
+
+4. `final` DTO / final DTO projection
+    - 通过单构造器或 `@ConstructorProperties` 标注构造器物化。
+    - 适合不可变 DTO。
+
+补充说明 / Additional notes:
+
+1. `String -> Map<String, Object>` 支持在投影物化阶段做 JSON 解析。
+2. 枚举支持按 `EnumValue.value`、`Enum.name()`、`ordinal` 做转换。
+3. list/page 两条查询路径已统一为相同的快速失败语义。
+
 ## ByteBuddy Mapper 扩展用法
 
 除了直接使用 `ProjectionRepository`，也支持通过 ByteBuddy 在运行时生成 Mapper 接口实现。
@@ -261,11 +297,11 @@ SELECT * FROM users WHERE id = 1  -- 查询所有字段后过滤
 ```java
 public interface UserProjectionMapperTest {
 
-    List<UserView> findByQuery(Wrapper<User> queryWrapper, Class<UserView> projectionType);
+     <P> List<P> findByQuery(Wrapper<User> queryWrapper, Class<P> projectionType);
 
-    IPage<UserView> findByQuery(Wrapper<User> queryWrapper,
-                                Page<?> page,
-                                Class<UserView> projectionType);
+     <P> IPage<P> findByQuery(Wrapper<User> queryWrapper,
+                                      Page<?> page,
+                                      Class<P> projectionType);
 }
 
 @Autowired
@@ -277,8 +313,14 @@ void testByteBuddyMapper() {
     QueryWrapper<User> queryWrapper = new QueryWrapper<User>()
             .like("username", "tom")
             .eq("is_enabled", true);
-    List<UserView> list = mapper.findByQuery(queryWrapper, UserView.class);
-    assertThat(list).isNotNull();
+
+    List<UserView> views = mapper.findByQuery(queryWrapper, UserView.class);
+    List<UserRecordDto> records = mapper.findByQuery(queryWrapper, UserRecordDto.class);
+    List<UserFinalDto> finals = mapper.findByQuery(queryWrapper, UserFinalDto.class);
+
+    assertThat(views).isNotNull();
+    assertThat(records).isNotNull();
+    assertThat(finals).isNotNull();
 }
 ```
 
@@ -286,8 +328,9 @@ void testByteBuddyMapper() {
 
 1. Mapper 接口建议按测试规范以 `*Test` 结尾。
 2. 统一方法名为 `findByQuery`，通过参数形态区分列表查询与分页查询。
-3. SDK 调用通过 `Class<?> projectionType` 传入投影类型，字段集合由投影定义决定。
-4. 实际执行链路仍复用 `ProjectionRepository`，保持排序/分页与字段映射规则一致。
+3. `projectionType` 现在可传入 interface、mutable DTO、record DTO、final DTO。
+4. 如果希望一个 Mapper 接口复用多种投影目标，推荐使用泛型返回签名 `<P> List<P>` / `<P> IPage<P>`。
+5. 实际执行链路仍复用 `ProjectionRepository`，保持排序/分页与字段映射规则一致。
 
 ## SimpleJdbcRepository 风格用法（无 ByteBuddy）
 
@@ -316,7 +359,17 @@ public class UserProjectionService {
 
 1. 不需要定义 Mapper 接口，也不依赖 ByteBuddy 运行时生成。
 2. 调用协议与 `ProjectionRepository` 保持一致（`Wrapper + projectionType + page`）。
-3. 适合在 Service 层显式编排查询条件、分页与字段裁剪。
+3. `projectionType` 同样支持 interface、mutable DTO、record DTO、final DTO。
+4. 适合在 Service 层显式编排查询条件、分页与字段裁剪。
+
+## 不可变 DTO 注意事项 / Immutable DTO Notes
+
+1. `record` 推荐直接使用 canonical constructor，对应属性名应与投影字段名保持一致。
+2. `final` DTO 推荐满足以下两种形式之一：
+    - 只有一个构造器，并保留稳定参数名
+    - 使用 `@ConstructorProperties` 显式标注参数名
+3. 如果构造器参数名无法稳定获取，构造器投影会在物化阶段快速失败，而不是延迟到业务代码调用时失败。
+4. 这套约束适用于直接 Repository、SimpleJdbc 风格、以及 ByteBuddy 生成 mapper 三种入口。
 
 ## 注意事项
 
@@ -324,6 +377,8 @@ public class UserProjectionService {
 2. **事务回滚**：测试默认启用事务并自动回滚，不会影响数据库数据
 3. **自增主键**：插入后会自动回填 ID 到实体对象
 4. **审计字段**：`createdBy`、`createTime` 等字段会被跳过，由审计机制自动填充
+5. **mixed mode**：如果仓储接口同时包含 MyBatis 映射方法与 Projection 标准方法，建议使用框架代理路径，避免让 `@MapperScan` 直接把整个接口当纯 Mapper 使用。
+6. **集合关联限制**：当前 map-backed 物化路径（interface/record/final DTO）仍不支持 collection association 投影，遇到这类场景会快速失败。
 
 ## 文件结构
 

@@ -3,7 +3,6 @@ package com.old.silence.data.mybatis.projection;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.metadata.TableFieldInfo;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.core.toolkit.Constants;
 import org.apache.ibatis.executor.keygen.Jdbc3KeyGenerator;
 import org.apache.ibatis.executor.keygen.NoKeyGenerator;
@@ -87,7 +86,7 @@ class ProjectionMappedStatementFactory {
 
         String countExpr = "COUNT(1)";
         if (metadata.isCollectionJoinInFrom()) {
-            TableInfo tableInfo = TableInfoHelper.getTableInfo(metadata.getEntityType());
+            TableInfo tableInfo = ProjectionTableInfoSupport.getTableInfo(configuration, metadata.getEntityType());
             if (tableInfo != null && tableInfo.getKeyColumn() != null && !tableInfo.getKeyColumn().isBlank()) {
                 countExpr = "COUNT(DISTINCT t0." + tableInfo.getKeyColumn() + ")";
             }

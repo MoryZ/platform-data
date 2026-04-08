@@ -74,8 +74,21 @@ public interface ProjectionRepository<T, ID extends Serializable> {
             .map(this::updateNonNull).reduce(0, (total, current) -> total + current);
     }
 
+    <DTO> int updateProjection(DTO dto);
+
+    @Transactional
+    <DTO> int updateAllProjection(Iterable<DTO> dtos);
+
     <S extends T> int save(S entity);
 
+    @Transactional
+    default <S extends T> int saveAll(Iterable<S> entities) {
+        return entities == null ? 0 
+        : StreamSupport.stream(Spliterators.spliteratorUnknownSize(entities.iterator(), Spliterator.NONNULL), false)
+            .map(this::save).reduce(0, (total, current) -> total + current);
+    }
+
+    @Transactional
     int deleteById(Serializable id);
 
     int delete(T entity);

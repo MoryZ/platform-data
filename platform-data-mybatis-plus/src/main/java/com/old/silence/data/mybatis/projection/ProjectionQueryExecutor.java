@@ -3,7 +3,6 @@ package com.old.silence.data.mybatis.projection;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableFieldInfo;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Constants;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -72,10 +71,7 @@ public class ProjectionQueryExecutor {
     }
 
     public <T> long selectCount(Wrapper<T> wrapper, Class<T> entityType) {
-        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
-        if (tableInfo == null) {
-            throw new IllegalArgumentException("No TableInfo found for entity type: " + entityType.getName());
-        }
+        TableInfo tableInfo = getRequiredTableInfo(entityType);
 
         ProjectionMetadata countMetadata = new ProjectionMetadata(entityType,
                 entityType,
@@ -188,11 +184,15 @@ public class ProjectionQueryExecutor {
     }
 
     private <T> TableInfo getRequiredTableInfo(Class<T> entityType) {
-        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
+        TableInfo tableInfo = ProjectionTableInfoSupport.getTableInfo(sqlSessionFactory.getConfiguration(), entityType);
         if (tableInfo == null) {
             throw new IllegalArgumentException("No TableInfo found for entity type: " + entityType.getName());
         }
         return tableInfo;
+    }
+
+    <T> TableInfo requireTableInfo(Class<T> entityType) {
+        return getRequiredTableInfo(entityType);
     }
 
     public List<Map<String, Object>> selectJoinTablePairs(String joinTableName, String sourceJoinCol,

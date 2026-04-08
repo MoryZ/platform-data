@@ -218,9 +218,9 @@ public class QueryWrapperConverter {
         try {
             if (!propertyPath.contains(".")) {
                 Field field = findField(domainType, propertyPath);
-                TableField tableField = field.getAnnotation(TableField.class);
-                if (tableField != null && StringUtils.hasText(tableField.value())) {
-                    return tableField.value();
+                String explicitColumnName = resolveExplicitColumnName(field);
+                if (StringUtils.hasText(explicitColumnName)) {
+                    return explicitColumnName;
                 }
                 return convertFieldNameToColumn(propertyPath);
             }
@@ -262,9 +262,9 @@ public class QueryWrapperConverter {
 
         String leafProperty = properties[properties.length - 1];
         Field leafField = findField(currentType, leafProperty);
-        TableField tableField = leafField.getAnnotation(TableField.class);
-        String leafColumn = (tableField != null && StringUtils.hasText(tableField.value()))
-                ? tableField.value()
+        String explicitLeafColumn = resolveExplicitColumnName(leafField);
+        String leafColumn = StringUtils.hasText(explicitLeafColumn)
+                ? explicitLeafColumn
                 : convertFieldNameToColumn(leafProperty);
 
         return aliasPath + "." + leafColumn;
@@ -373,9 +373,9 @@ public class QueryWrapperConverter {
 
             String leafProperty = pathSegments[pathSegments.length - 1];
             Field leafField = findField(currentType, leafProperty);
-            TableField tableFieldAnn = leafField.getAnnotation(TableField.class);
-            String leafColumn = (tableFieldAnn != null && StringUtils.hasText(tableFieldAnn.value()))
-                    ? tableFieldAnn.value()
+                String explicitLeafColumn = resolveExplicitColumnName(leafField);
+                String leafColumn = StringUtils.hasText(explicitLeafColumn)
+                    ? explicitLeafColumn
                     : convertFieldNameToColumn(leafProperty);
 
             boolean negated = (operator == Type.NOT_EQUAL
@@ -400,9 +400,9 @@ public class QueryWrapperConverter {
         String inferredFkProperty = associationField.getName() + "Id";
         try {
             Field fkField = findField(sourceType, inferredFkProperty);
-            TableField tableField = fkField.getAnnotation(TableField.class);
-            if (tableField != null && StringUtils.hasText(tableField.value())) {
-                return tableField.value();
+            String explicitColumnName = resolveExplicitColumnName(fkField);
+            if (StringUtils.hasText(explicitColumnName)) {
+                return explicitColumnName;
             }
             return convertFieldNameToColumn(inferredFkProperty);
         } catch (NoSuchFieldException e) {
@@ -521,6 +521,45 @@ public class QueryWrapperConverter {
                     Object nameVal = nameMethod.invoke(ann);
                     if (nameVal instanceof String name && StringUtils.hasText(name)) {
                         return name;
+                    }
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String resolveExplicitColumnName(Field field) {
+        TableField tableField = field.getAnnotation(TableField.class);
+        if (tableField != null && StringUtils.hasText(tableField.value())) {
+            return tableField.value();
+        }
+
+        String jpaColumnName = getAnnotationStringAttribute(field,
+                "name",
+                "jakarta.persistence.Column",
+                "javax.persistence.Column");
+        if (StringUtils.hasText(jpaColumnName)) {
+            return jpaColumnName;
+        }
+
+        return null;
+    }
+
+    private static String getAnnotationStringAttribute(Field field,
+                                                       String attributeName,
+                                                       String... annotationClassNames) {
+        for (java.lang.annotation.Annotation ann : field.getAnnotations()) {
+            String annName = ann.annotationType().getName();
+            for (String annotationClassName : annotationClassNames) {
+                if (!annotationClassName.equals(annName)) {
+                    continue;
+                }
+                try {
+                    java.lang.reflect.Method method = ann.annotationType().getMethod(attributeName);
+                    Object value = method.invoke(ann);
+                    if (value instanceof String text && StringUtils.hasText(text)) {
+                        return text;
                     }
                 } catch (ReflectiveOperationException ignored) {
                 }

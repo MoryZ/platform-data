@@ -320,3 +320,354 @@ fields 参数模式收口（2026-02-28）：
    - 测试 README 移除 `class + fields` 参数模式示例
 4) 验证结果
    - `ProjectionIntegrationTest` 通过（21 passed, 0 failed）
+
+投影统一物化方案冻结（2026-03-30）：
+1) 目标范围冻结
+   - `Class<T> projectionType` 统一支持：
+     interface 投影、普通 DTO class 投影、record/final DTO 投影
+   - 不采用 service 层二次转换；仓储层直接返回目标投影类型
+   - 混合模式保持：Mapper 自定义方法优先，Projection 标准方法回退
+2) 现状风险确认
+   - interface 路径为 `Map(LinkedHashMap) -> 动态代理`，类型转换在 getter 调用期触发
+   - 已识别高风险：`String -> Map`、`String/Number -> Enum` 在查询期正常但 getter 期失败
+3) 执行顺序冻结（避免反复改动）
+   - Step 0: 冻结设计决议与验收标准（仅文档）
+   - Step 1: 先收敛 interface 路径，消除 getter 延迟失败
+   - Step 2: 增加 record/final DTO 构造器物化能力
+   - Step 3: 对齐 list/page 两条查询路径的类型转换行为
+   - Step 4: 增加完整测试矩阵并回归
+4) 技术策略冻结
+   - 建立统一物化管线：`metadata -> row map/raw object -> pre-convert -> materialize`
+   - 转换优先级：TypeHandler > 显式 Converter > ConversionService > 明确失败
+   - 明确禁止“延迟到 getter 才失败”，改为物化阶段快速失败
+5) Step 1 验收门槛（预设）
+   - interface 投影不再在 getter 阶段抛类型转换异常
+   - `String -> Map`、`Enum(name/ordinal/value)` 有稳定转换与错误提示
+   - 不改变现有对外方法签名
+6) 追踪与变更记录规则
+   - 按增量更新 `PROGRESS.txt`
+   - 同步维护根目录 `CHANGELOG.md`（Unreleased）
+   - 每步必须附带验证命令与结果
+
+Projection materialization design freeze (2026-03-30):
+1) Scope frozen
+   - `Class<T> projectionType` will support interface, mutable DTO class, and record/final DTO.
+   - No service-layer conversion.
+   - Mixed mode remains: MyBatis mapped methods first, Projection fallback second.
+2) Risk confirmed
+   - Interface path previously used `Map(LinkedHashMap) -> proxy`, with conversion deferred to getter access.
+   - High risk centered on `String -> Map` and `String/Number -> Enum` conversion.
+3) Execution order frozen
+   - Step 0: design freeze
+   - Step 1: interface pre-conversion
+   - Step 2: record/final DTO constructor materialization
+   - Step 3: unify list/page semantics
+   - Step 4: full regression coverage
+
+Step 1 - interface 投影前置转换（2026-03-30）：
+1) 新增统一值转换器
+   - 新增 `ProjectionValueConverter`
+   - 按 `ProjectionMetadata.fields` 在物化前完成 row map 规范化
+   - 转换策略覆盖：
+     - `String -> Map<String, Object>`（JSON 解析）
+     - `EnumValue.value` / `Enum.name()` / `ordinal` 三路径枚举转换
+     - 基础类型沿用 `DefaultConversionService`
+2) interface 物化链路改造
+   - `SimpleProjectionRepository` 在 interface list/page 路径改为：
+     `selectMaps -> normalizeRows -> InterfaceProjectionFactory`
+   - `InterfaceProjectionFactory` 新增基于 `ProjectionMetadata` 的创建重载
+   - getter 保留兜底转换，但核心类型转换前移到创建阶段
+3) 回归测试新增
+   - 新增 `InterfaceProjectionFactoryTest`
+   - 覆盖：
+     - 正常场景：`String JSON -> Map`、`int -> EnumValue enum`、boolean `isXxx` 取值
+     - 异常场景：非法 JSON 在 create 阶段失败
+     - 异常场景：非法枚举值在 create 阶段失败
+4) 本步范围说明
+   - 未引入 record/final DTO 构造器物化（留待 Step 2）
+   - 未改动对外 Repository API
+5) 验证结果
+   - `runTests`：
+     - `InterfaceProjectionFactoryTest` 通过
+     - `ProjectionIntegrationTest` 通过
+   - 汇总：31 passed, 0 failed
+
+Step 1 - interface projection pre-conversion (2026-03-30):
+1) Added `ProjectionValueConverter`
+   - Normalizes row values by `ProjectionMetadata.fields` before interface proxy creation.
+   - Covers `String -> Map<String, Object>`, enum coercion through `EnumValue.value` / `name` / `ordinal`, and base scalar conversion.
+2) Rewired interface path
+   - `SimpleProjectionRepository` now uses `selectMaps -> normalizeRows -> InterfaceProjectionFactory`.
+3) Added regression tests
+   - Covers successful JSON/enum conversion and fail-fast cases for invalid JSON and invalid enum values.
+4) Verification
+   - `InterfaceProjectionFactoryTest` passed
+   - `ProjectionIntegrationTest` passed
+   - Summary: 31 passed, 0 failed
+
+Step 2 - record/final DTO constructor materialization（2026-03-30）：
+1) 新增构造器物化器
+   - 新增 `ProjectionConstructorMaterializer`
+   - record 走 canonical constructor
+   - final DTO 走单构造器或 `@ConstructorProperties` 标注构造器
+2) 元数据解析增强
+   - `ProjectionMetadataResolver` 显式支持 record component 作为 projection property 来源
+3) 查询路径分流
+   - `SimpleProjectionRepository` 对 record/final DTO 改走 `selectMaps + constructor materialization`
+   - mutable DTO 继续沿用原有 bean 映射路径
+4) 测试补充
+   - 新增 `TestUserRecordProjection`
+   - 新增 `TestUserFinalProjection`
+   - `ProjectionIntegrationTest` 新增 record/final DTO list/page 场景
+5) 验证结果
+   - `mvn -pl platform-data-mybatis-plus -Dtest=InterfaceProjectionFactoryTest,ProjectionIntegrationTest test -q` 通过
+   - `mvn -pl platform-data-mybatis-plus test -q` 通过
+
+Step 2 - record/final DTO constructor materialization (2026-03-30):
+1) Added `ProjectionConstructorMaterializer`
+   - Records use canonical constructors.
+   - Final DTOs use a single constructor or a constructor marked with `@ConstructorProperties`.
+2) Enhanced metadata resolution
+   - `ProjectionMetadataResolver` now treats record components as projection properties.
+3) Routed query execution
+   - Record/final DTOs now use `selectMaps + constructor materialization`.
+   - Mutable DTOs keep the existing bean mapping path.
+4) Added regression coverage
+   - Added record and final DTO projection test types.
+   - Added list/page integration scenarios for both forms.
+5) Verification
+   - `mvn -pl platform-data-mybatis-plus -Dtest=InterfaceProjectionFactoryTest,ProjectionIntegrationTest test -q` passed
+   - `mvn -pl platform-data-mybatis-plus test -q` passed
+
+Step 3 - unified map-backed materialization（2026-03-30）：
+1) 新增统一物化入口
+   - 新增 `ProjectionResultMaterializer`
+   - 收敛 interface 投影与 constructor DTO 投影的共同逻辑：
+     - 是否需要 map 查询
+     - 是否允许 collection association
+     - list/page 结果物化
+2) Repository 路径收口
+   - `SimpleProjectionRepository` 删除 interface/constructor 两段重复分支
+   - list/page 查询统一走 `ProjectionResultMaterializer`
+3) 一致性测试补充
+   - 新增 `ProjectionResultMaterializerTest`
+   - 覆盖：
+     - interface 与 final DTO 通过同一入口完成物化
+     - list/page 在非法枚举值场景下保持相同的快速失败语义
+4) 本步价值
+   - 降低后续 Step 4 继续扩展转换规则时的重复改动面
+   - 将 list/page 一致性约束明确落到统一 helper
+5) 验证结果
+   - `runTests`：`ProjectionResultMaterializerTest` + `InterfaceProjectionFactoryTest` + `ProjectionIntegrationTest` 通过（36 passed, 0 failed）
+   - `mvn -pl platform-data-mybatis-plus test -q` 通过
+
+Step 3 - unified map-backed materialization (2026-03-30):
+1) Added unified materialization entry point
+   - Added `ProjectionResultMaterializer`
+   - Consolidated shared logic for interface projections and constructor-based DTO projections:
+     - whether map query is required
+     - whether collection associations are allowed
+     - list/page record materialization
+2) Repository refactor
+   - Removed duplicate interface/constructor branches from `SimpleProjectionRepository`
+   - Unified list/page map-backed projection routing through `ProjectionResultMaterializer`
+3) Added parity regression tests
+   - Added `ProjectionResultMaterializerTest`
+   - Covers:
+     - interface and final DTO materialization through the same entry point
+     - identical fail-fast semantics for list/page on invalid enum values
+4) Value of this step
+   - Reduces duplicate change surface for future conversion-rule expansion in Step 4
+   - Makes list/page parity an explicit helper-level contract
+5) Verification
+   - `runTests`: `ProjectionResultMaterializerTest` + `InterfaceProjectionFactoryTest` + `ProjectionIntegrationTest` passed (36 passed, 0 failed)
+   - `mvn -pl platform-data-mybatis-plus test -q` passed
+
+Step 4 - regression matrix completion（2026-03-30）：
+1) 补齐 projectionType 交叉覆盖
+   - 直接 Repository 路径：已覆盖 interface / mutable DTO / record / final DTO
+   - SimpleJdbc 风格路径：新增 record / final DTO list/page 覆盖
+   - `findById` 路径：新增 record / final DTO 覆盖
+   - ByteBuddy 路径：新增泛型 mapper 契约，覆盖 interface / record / final DTO
+2) 新增测试契约
+   - 新增 `TestUserGenericProjectionMapperTest`
+   - `ProjectionIntegrationTest` 增加：
+     - `shouldSupportRecordAndFinalProjectionFindById`
+     - `shouldSupportSimpleJdbcStyleRecordAndFinalProjectionMaterialization`
+     - `shouldSupportGenericByteBuddyProjectionMapperAcrossProjectionTypes`
+3) 本步结果
+   - mixed mode、SimpleJdbc、ByteBuddy、直接 Repository 四条主要入口均已对 record/final DTO 做显式回归
+   - Step 0 规划的核心支持矩阵已具备回归覆盖
+4) 验证结果
+   - `runTests`：`ProjectionIntegrationTest` + `ProjectionResultMaterializerTest` + `InterfaceProjectionFactoryTest` 通过（39 passed, 0 failed）
+   - `mvn -pl platform-data-mybatis-plus test -q` 通过
+
+Step 4 - regression matrix completion (2026-03-30):
+1) Completed projection-type cross coverage
+   - Direct repository path now covers interface / mutable DTO / record / final DTO
+   - SimpleJdbc-style path now covers record / final DTO list/page scenarios
+   - `findById` path now covers record / final DTO
+   - ByteBuddy path now uses a generic mapper contract covering interface / record / final DTO
+2) Added test contracts
+   - Added `TestUserGenericProjectionMapperTest`
+   - Added integration scenarios for record/final `findById`, SimpleJdbc record/final materialization, and generic ByteBuddy projection routing
+3) Outcome
+   - Mixed mode, SimpleJdbc, ByteBuddy, and direct repository entry points now have explicit regression coverage for record/final DTOs
+   - The core support matrix planned in Step 0 now has regression coverage
+4) Verification
+   - `runTests`: `ProjectionIntegrationTest` + `ProjectionResultMaterializerTest` + `InterfaceProjectionFactoryTest` passed (39 passed, 0 failed)
+   - `mvn -pl platform-data-mybatis-plus test -q` passed
+
+Step 5 - usage documentation alignment（2026-03-30）：
+1) 文档同步
+   - 更新 `src/test/java/com/old/silence/data/mybatis/test/README.md`
+   - 新增 `projectionType` 支持矩阵说明：interface / mutable DTO / record / final DTO
+   - 补充 ByteBuddy 泛型 mapper 推荐签名
+   - 补充 SimpleJdbc 风格下的不可变 DTO 用法说明
+   - 补充 mixed mode 与 collection association 限制说明
+2) 本步目标
+   - 让当前代码能力与文档描述保持一致
+   - 避免业务侧仍按“只支持 interface/普通 DTO”的旧认知接入
+
+Step 5 - usage documentation alignment (2026-03-30):
+1) Documentation synchronized
+   - Updated `src/test/java/com/old/silence/data/mybatis/test/README.md`
+   - Added support matrix for interface / mutable DTO / record / final DTO
+   - Added recommended generic ByteBuddy mapper signature
+   - Added immutable DTO notes for SimpleJdbc-style usage
+   - Added mixed-mode and collection-association limitation notes
+2) Goal
+   - Keep documentation aligned with the implemented capability set
+   - Prevent downstream usage from assuming the older interface-only or mutable-DTO-only model
+
+Step 6 - helper deduplication and module README（2026-03-30）：
+1) 代码整理
+   - 新增 `ProjectionPropertyAccessSupport`
+   - 收敛重复的属性键解析与基础类型辅助逻辑：
+     - `wrapPrimitive`
+     - key normalize
+     - camelCase/underscore/`is_` 风格取值匹配
+   - `InterfaceProjectionFactory` / `ProjectionValueConverter` / `ProjectionConstructorMaterializer` 改为复用统一 helper
+2) 模块级文档新增
+   - 新增 `platform-data-mybatis-plus/README.md`
+   - 说明模块概览、支持矩阵、三种查询入口、物化规则、mixed mode 说明与当前限制
+3) 本步价值
+   - 降低投影物化链路后续维护时的重复修改点
+   - 将关键使用说明从测试 README 提升到模块 README
+4) 验证结果
+   - `mvn -pl platform-data-mybatis-plus test -q` 通过
+
+Step 6 - helper deduplication and module README (2026-03-30):
+1) Code cleanup
+   - Added `ProjectionPropertyAccessSupport`
+   - Consolidated duplicated property-key resolution and primitive-wrapper helpers:
+     - `wrapPrimitive`
+     - key normalization
+     - camelCase/underscore/`is_` value lookup
+   - Updated `InterfaceProjectionFactory`, `ProjectionValueConverter`, and `ProjectionConstructorMaterializer` to reuse the shared helper
+2) Added module-level documentation
+   - Added `platform-data-mybatis-plus/README.md`
+   - Documents module overview, support matrix, three query entrypoints, materialization rules, mixed-mode behavior, and current limitations
+3) Value
+   - Reduces duplicate maintenance surface across the projection materialization chain
+   - Promotes key usage guidance from test README into a module README
+4) Verification
+   - `mvn -pl platform-data-mybatis-plus test -q` passed
+
+Step 7 - troubleshooting and warning cleanup（2026-03-30）：
+1) 排障文档补充
+   - 为 `platform-data-mybatis-plus/README.md` 增加 `Troubleshooting / 常见排障`
+   - 覆盖典型问题：
+     - `BindingException: Invalid bound statement`
+     - `ConflictingBeanDefinitionException`
+     - 构造器参数名缺失
+     - collection association 在 map-backed 路径不支持
+     - 投影字段物化失败
+2) 低噪音清理
+   - 删除 `TestRole` 中的无用 import
+   - 删除 `ProjectionMapperByteBuddyFactory` 中未使用的私有方法
+3) 验证结果
+   - `mvn -pl platform-data-mybatis-plus test -q` 通过
+   - 静态诊断：相关文件无错误
+
+Step 7 - troubleshooting and warning cleanup (2026-03-30):
+1) Added troubleshooting documentation
+   - Added a `Troubleshooting / 常见排障` section to `platform-data-mybatis-plus/README.md`
+   - Covers common issues:
+     - `BindingException: Invalid bound statement`
+     - `ConflictingBeanDefinitionException`
+     - missing constructor parameter names
+     - unsupported collection association in map-backed paths
+     - projection field materialization failures
+2) Low-noise cleanup
+   - Removed an unused import from `TestRole`
+   - Removed an unused private method from `ProjectionMapperByteBuddyFactory`
+3) Verification
+   - `mvn -pl platform-data-mybatis-plus test -q` passed
+   - Static diagnostics: no errors in touched files
+
+Step 8 - delivery examples in module README（2026-03-30）：
+1) 交付示例补充
+   - 在 `platform-data-mybatis-plus/README.md` 新增最小接入示例
+   - 覆盖三种入口：
+     - 直接 `ProjectionRepository` / `ProjectionMapperRepository`
+     - `ProjectionMapperByteBuddyFactory`
+     - `SimpleProjectionQueryRepositoryFactory`
+   - 覆盖三类 projectionType 示例：interface / record DTO / final DTO
+2) 选型说明补充
+   - 新增“如何选择 projectionType”小节
+   - 明确 interface、mutable DTO、record、final DTO 的使用建议
+
+Step 8 - delivery examples in module README (2026-03-30):
+1) Added delivery-oriented examples
+   - Added minimal integration examples to `platform-data-mybatis-plus/README.md`
+   - Covers three entrypoints:
+     - direct `ProjectionRepository` / `ProjectionMapperRepository`
+     - `ProjectionMapperByteBuddyFactory`
+     - `SimpleProjectionQueryRepositoryFactory`
+   - Covers three projection forms in examples: interface / record DTO / final DTO
+2) Added selection guidance
+   - Added a “Choosing Projection Type” section
+   - Clarified when to use interface, mutable DTO, record, and final DTO
+
+Step 9 - projection repository update alignment and test-structure normalization（2026-03-31）：
+1) ProjectionRepository 更新能力补齐
+   - 在 `SimpleProjectionRepository` 中实现 `updateProjection(DTO)` 与 `updateAllProjection(Iterable<DTO>)`
+   - 增加 DTO -> Entity 的补丁式映射流程：
+     - 强制 id 字段存在且非空
+     - 仅复制可读且可写的非空属性
+     - 复用非空更新路径，保持“部分字段更新”语义
+2) 测试基类行为对齐
+   - `AbstractMyBatisPlusMapperTests` 的 `verifyUpdateProjection(...)` 调整为：
+     - mapper 支持 projection repository 时执行投影更新校验
+     - 仅 BaseMapper 场景给出清晰的 unsupported 提示
+   - 新增 `MyBatisProjectionMapperTests` 用于 projection 能力测试收敛
+3) 测试目录重构与命名统一
+   - 将真实 JUnit 测试收敛到 `...test.projection`
+   - 将夹具按职责拆分到 `...test.fixture.{entity,mapper,projection,query}`
+   - 非 JUnit 契约类统一为 `*Contract`
+   - projection 目标类型统一为：interface=`*View`，class/record/final=`*Dto`
+4) 验证结果
+   - 经过重命名回归修复后，`mvn -pl platform-data-mybatis-plus clean test -q` 通过
+   - 仅保留预期非阻塞告警（ByteBuddy 动态代理/JVM CDS 相关提示）
+
+Step 9 - projection repository update alignment and test-structure normalization (2026-03-31):
+1) Implemented projection update capabilities
+   - Implemented `updateProjection(DTO)` and `updateAllProjection(Iterable<DTO>)` in `SimpleProjectionRepository`
+   - Added DTO -> Entity patch-style mapping flow:
+     - enforce id presence and non-null value
+     - copy only readable and writable non-null properties
+     - reuse non-null update path to preserve partial-update semantics
+2) Aligned test base behavior
+   - Updated `verifyUpdateProjection(...)` in `AbstractMyBatisPlusMapperTests`:
+     - execute projection update checks when mapper supports projection repository
+     - provide explicit unsupported message for BaseMapper-only scenarios
+   - Added `MyBatisProjectionMapperTests` as projection-focused base
+3) Reorganized test structure and naming
+   - Kept real JUnit tests in `...test.projection`
+   - Split fixtures by role into `...test.fixture.{entity,mapper,projection,query}`
+   - Standardized non-JUnit contracts to `*Contract`
+   - Standardized projection targets: interface=`*View`, class/record/final=`*Dto`
+4) Verification
+   - After fixing rename collateral regressions, `mvn -pl platform-data-mybatis-plus clean test -q` passed
+   - Only expected non-blocking warnings remain (ByteBuddy dynamic agent and JVM CDS notes)

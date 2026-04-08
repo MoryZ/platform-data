@@ -5,11 +5,12 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.BeanWrapperImpl;
+import org.springframework.beans.BeanUtils;
 
 import java.io.Serializable;
+import java.beans.PropertyDescriptor;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -108,14 +109,12 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                 entityType,
                 Collections.emptyList(),
                 extractConditionAssociationHints(queryWrapper));
-        if (projectionType.isInterface()) {
-            if (!metadata.getCollectionAssociations().isEmpty()) {
-                throw new IllegalArgumentException("Collection association projection for interface type is not supported yet: "
-                        + projectionType.getName());
-            }
+        if (ProjectionResultMaterializer.requiresMapQuery(projectionType)) {
+            ProjectionResultMaterializer.validateCollectionCompatibility(projectionType, metadata);
             List<java.util.Map<String, Object>> resultMaps = queryExecutor.selectMaps(queryWrapper, metadata);
-            return InterfaceProjectionFactory.createList(projectionType, resultMaps);
+            return ProjectionResultMaterializer.materializeList(projectionType, metadata, resultMaps);
         }
+
         List<P> results = queryExecutor.select(queryWrapper, metadata);
         loadCollectionAssociations(results, metadata);
         return results;
@@ -131,20 +130,12 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                 entityType,
                 Collections.emptyList(),
                 extractConditionAssociationHints(queryWrapper));
-        if (projectionType.isInterface()) {
-            if (!metadata.getCollectionAssociations().isEmpty()) {
-                throw new IllegalArgumentException("Collection association projection for interface type is not supported yet: "
-                        + projectionType.getName());
-            }
+        if (ProjectionResultMaterializer.requiresMapQuery(projectionType)) {
+            ProjectionResultMaterializer.validateCollectionCompatibility(projectionType, metadata);
             IPage<java.util.Map<String, Object>> mapPage = queryExecutor.selectPageMaps(page, dataWrapper, queryWrapper, metadata);
-            List<P> records = InterfaceProjectionFactory.createList(projectionType, mapPage.getRecords());
-
-            @SuppressWarnings("unchecked")
-            IPage<P> result = (IPage<P>) page;
-            result.setRecords(records);
-            result.setTotal(mapPage.getTotal());
-            return result;
+            return ProjectionResultMaterializer.materializePage(page, mapPage, projectionType, metadata);
         }
+
         IPage<P> result = queryExecutor.selectPage(page, dataWrapper, queryWrapper, metadata);
         loadCollectionAssociations(result.getRecords(), metadata);
         return result;
@@ -214,7 +205,7 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                 if (targetIds.isEmpty()) {
                     continue;
                 }
-                TableInfo targetTableInfo = TableInfoHelper.getTableInfo(association.getTargetEntityType());
+                TableInfo targetTableInfo = queryExecutor.requireTableInfo(association.getTargetEntityType());
                 QueryWrapper targetQuery = new QueryWrapper();
                 targetQuery.in(targetTableInfo.getKeyColumn(), targetIds);
                 ProjectionMetadata childMetadata = metadataResolver.resolve(association.getElementType(),
@@ -345,6 +336,23 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
     }
 
     @Override
+    public <DTO> int updateProjection(DTO dto) {
+        Objects.requireNonNull(dto, "Projection DTO must not be null");
+        T entity = instantiateEntityFromProjectionDto(dto);
+        return updateNonNull(entity);
+    }
+
+    @Override
+    public <DTO> int updateAllProjection(Iterable<DTO> dtos) {
+        if (dtos == null) {
+            return 0;
+        }
+        return StreamSupport.stream(dtos.spliterator(), false)
+                .map(this::updateProjection)
+                .reduce(0, Integer::sum);
+    }
+
+    @Override
     public <S extends T> int save(S entity) {
         Objects.requireNonNull(entity, "Entity must not be null");
 
@@ -438,7 +446,7 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
     }
 
     private TableInfo getRequiredTableInfo() {
-        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
+        TableInfo tableInfo = queryExecutor.requireTableInfo(entityType);
         if (tableInfo == null || tableInfo.getKeyColumn() == null || tableInfo.getKeyColumn().isBlank()) {
             throw new IllegalArgumentException("No @TableId found for entity type: " + entityType.getName());
         }
@@ -474,5 +482,40 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
             qualifiers.add(qualifier);
         }
         return qualifiers.isEmpty() ? Collections.emptyList() : new ArrayList<>(qualifiers);
+    }
+
+    private <DTO> T instantiateEntityFromProjectionDto(DTO dto) {
+        TableInfo tableInfo = getRequiredTableInfo();
+        String keyProperty = tableInfo.getKeyProperty();
+
+        BeanWrapperImpl dtoWrapper = new BeanWrapperImpl(dto);
+        if (!dtoWrapper.isReadableProperty(keyProperty)) {
+            throw new IllegalArgumentException("Projection DTO does not expose id property '" + keyProperty
+                    + "': " + dto.getClass().getName());
+        }
+        Object keyValue = dtoWrapper.getPropertyValue(keyProperty);
+        if (keyValue == null) {
+            throw new IllegalArgumentException("Projection DTO id property must not be null: "
+                    + dto.getClass().getName() + "." + keyProperty);
+        }
+
+        T entity = BeanUtils.instantiateClass(entityType);
+        BeanWrapperImpl entityWrapper = new BeanWrapperImpl(entity);
+        entityWrapper.setPropertyValue(keyProperty, keyValue);
+
+        for (PropertyDescriptor descriptor : BeanUtils.getPropertyDescriptors(dto.getClass())) {
+            String propertyName = descriptor.getName();
+            if ("class".equals(propertyName) || keyProperty.equals(propertyName)) {
+                continue;
+            }
+            if (!dtoWrapper.isReadableProperty(propertyName) || !entityWrapper.isWritableProperty(propertyName)) {
+                continue;
+            }
+            Object value = dtoWrapper.getPropertyValue(propertyName);
+            if (value != null) {
+                entityWrapper.setPropertyValue(propertyName, value);
+            }
+        }
+        return entity;
     }
 }

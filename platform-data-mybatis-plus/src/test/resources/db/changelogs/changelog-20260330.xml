@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="20260330" author="moryzang">
+        <createTable tableName="t_user">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="username" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="is_enabled" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by" type="VARCHAR(64)"/>
+            <column name="created_date" type="TIMESTAMP"/>
+            <column name="updated_by" type="VARCHAR(64)"/>
+            <column name="updated_date" type="TIMESTAMP"/>
+        </createTable>
+
+        <createTable tableName="menu">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="meta" type="VARCHAR(500)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by" type="VARCHAR(64)"/>
+            <column name="created_date" type="TIMESTAMP"/>
+            <column name="updated_by" type="VARCHAR(64)"/>
+            <column name="updated_date" type="TIMESTAMP"/>
+        </createTable>
+
+        <createTable tableName="department">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="role">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="role_name" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="parent_role_id" type="BIGINT"/>
+        </createTable>
+
+        <createTable tableName="user_role">
+            <column name="user_id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="pk_user_role"/>
+            </column>
+            <column name="role_id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="pk_user_role"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="user_department">
+            <column name="user_id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="pk_user_department"/>
+            </column>
+            <column name="dept_id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="pk_user_department"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

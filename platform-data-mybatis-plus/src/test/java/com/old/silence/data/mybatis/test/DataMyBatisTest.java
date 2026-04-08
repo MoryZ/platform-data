@@ -19,9 +19,11 @@ import org.springframework.context.annotation.ComponentScan.Filter;
 import org.springframework.core.annotation.AliasFor;
 import org.springframework.core.env.Environment;
 import org.springframework.test.context.BootstrapWith;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
 import com.old.silence.data.mybatis.test.autoconfigure.AutoConfigureDataMyBatis;
+import com.old.silence.data.mybatis.projection.ProjectionQueryAutoConfiguration;
 
 /**
  * @author moryzang
@@ -39,7 +41,8 @@ import com.old.silence.data.mybatis.test.autoconfigure.AutoConfigureDataMyBatis;
 @AutoConfigureJdbc
 @AutoConfigureDataMyBatis
 @AutoConfigureTestDatabase
-@ImportAutoConfiguration
+@ContextConfiguration(classes = DataMyBatisTestApplication.class)
+@ImportAutoConfiguration(ProjectionQueryAutoConfiguration.class)
 public @interface DataMyBatisTest {
 
     /**

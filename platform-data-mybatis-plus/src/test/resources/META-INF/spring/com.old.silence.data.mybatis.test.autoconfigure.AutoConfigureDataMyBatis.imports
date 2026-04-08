@@ -1,0 +1,3 @@
+# AutoConfigureDataMyBatis auto-configuration imports
+com.old.silence.data.mybatis.projection.ProjectionQueryAutoConfiguration
+com.old.silence.data.mybatis.test.DataMyBatisRepositoryAutoConfiguration

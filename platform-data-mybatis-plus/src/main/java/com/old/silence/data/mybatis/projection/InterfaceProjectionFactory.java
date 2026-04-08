@@ -36,8 +36,20 @@ final class InterfaceProjectionFactory {
         );
     }
 
+    static <P> P create(Class<P> projectionInterface,
+                        ProjectionMetadata metadata,
+                        Map<String, Object> source) {
+        return create(projectionInterface, ProjectionValueConverter.normalizeRow(metadata, source));
+    }
+
     static <P> List<P> createList(Class<P> projectionInterface, List<Map<String, Object>> sourceList) {
         return sourceList.stream().map(source -> create(projectionInterface, source)).collect(Collectors.toList());
+    }
+
+    static <P> List<P> createList(Class<P> projectionInterface,
+                                  ProjectionMetadata metadata,
+                                  List<Map<String, Object>> sourceList) {
+        return createList(projectionInterface, ProjectionValueConverter.normalizeRows(metadata, sourceList));
     }
 
     private static final class InterfaceProjectionInvocationHandler implements InvocationHandler {
@@ -67,7 +79,8 @@ final class InterfaceProjectionFactory {
             }
 
             Class<?> returnType = method.getReturnType();
-            if (returnType.isInstance(rawValue)) {
+            Class<?> wrappedReturnType = ProjectionPropertyAccessSupport.wrapPrimitive(returnType);
+            if (wrappedReturnType.isInstance(rawValue)) {
                 return rawValue;
             }
 
@@ -87,30 +100,7 @@ final class InterfaceProjectionFactory {
         }
 
         private Object resolveValue(String propertyName, Class<?> returnType) {
-            if (values.containsKey(propertyName)) {
-                return values.get(propertyName);
-            }
-
-            String underscore = toUnderscoreCase(propertyName);
-            if (values.containsKey(underscore)) {
-                return values.get(underscore);
-            }
-
-            if ((returnType == Boolean.class || returnType == boolean.class)) {
-                String isStyle = "is_" + underscore;
-                if (values.containsKey(isStyle)) {
-                    return values.get(isStyle);
-                }
-            }
-
-            String expected = normalize(propertyName);
-            for (Map.Entry<String, Object> entry : values.entrySet()) {
-                if (Objects.equals(normalize(entry.getKey()), expected)) {
-                    return entry.getValue();
-                }
-            }
-
-            return null;
+            return ProjectionPropertyAccessSupport.resolveValue(values, propertyName, null, returnType);
         }
 
         @SuppressWarnings({"rawtypes", "unchecked"})
@@ -186,19 +176,5 @@ final class InterfaceProjectionFactory {
             return Character.toLowerCase(value.charAt(0)) + value.substring(1);
         }
 
-        private String toUnderscoreCase(String camelCase) {
-            return camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
-        }
-
-        private String normalize(String key) {
-            if (key == null) {
-                return null;
-            }
-            String normalized = key.toLowerCase().replace("_", "");
-            if (normalized.startsWith("is") && normalized.length() > 2) {
-                return normalized.substring(2);
-            }
-            return normalized;
-        }
     }
 }

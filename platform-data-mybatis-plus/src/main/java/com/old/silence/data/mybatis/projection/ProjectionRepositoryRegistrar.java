@@ -115,8 +115,9 @@ public class ProjectionRepositoryRegistrar implements ImportBeanDefinitionRegist
         Set<String> basePackages = new LinkedHashSet<>();
 
         for (String pkg : attributes.getStringArray("basePackages")) {
-            if (StringUtils.hasText(pkg)) {
-                basePackages.add(pkg);
+            String resolvedPackage = resolvePackagePlaceholder(pkg);
+            if (StringUtils.hasText(resolvedPackage)) {
+                basePackages.add(resolvedPackage);
             }
         }
 
@@ -129,6 +130,24 @@ public class ProjectionRepositoryRegistrar implements ImportBeanDefinitionRegist
         }
 
         return basePackages;
+    }
+
+    private String resolvePackagePlaceholder(String pkg) {
+        if (!StringUtils.hasText(pkg)) {
+            return null;
+        }
+        if (!pkg.contains("${")) {
+            return pkg;
+        }
+        if (this.environment == null) {
+            return null;
+        }
+        try {
+            String resolved = this.environment.resolvePlaceholders(pkg);
+            return StringUtils.hasText(resolved) ? resolved : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override

@@ -5,15 +5,15 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.metadata.TableFieldInfo;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
-import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.old.silence.data.commons.annotation.RelationalQueryProperty;
+import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.type.TypeHandler;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 
-import java.beans.PropertyDescriptor;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
@@ -58,6 +58,18 @@ public class ProjectionMetadataResolver {
     );
 
     private final ConcurrentMap<String, ProjectionMetadata> cache = new ConcurrentHashMap<>();
+    private volatile Configuration configuration;
+
+    public ProjectionMetadataResolver() {
+    }
+
+    public ProjectionMetadataResolver(Configuration configuration) {
+        this.configuration = configuration;
+    }
+
+    public void setConfiguration(Configuration configuration) {
+        this.configuration = configuration;
+    }
 
     public ProjectionMetadata resolve(Class<?> projectionType, Class<?> entityType) {
         return resolve(projectionType, entityType, List.of());
@@ -81,7 +93,7 @@ public class ProjectionMetadataResolver {
             return cached;
         }
 
-        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
+        TableInfo tableInfo = getTableInfo(entityType);
         if (tableInfo == null) {
             throw new IllegalArgumentException("No TableInfo found for entity type: " + entityType.getName());
         }
@@ -96,11 +108,8 @@ public class ProjectionMetadataResolver {
         String keyProperty = tableInfo.getKeyProperty();
         String keyColumn = tableInfo.getKeyColumn();
 
-        for (PropertyDescriptor descriptor : org.springframework.beans.BeanUtils.getPropertyDescriptors(projectionType)) {
-            String propertyName = descriptor.getName();
-            if ("class".equals(propertyName)) {
-                continue;
-            }
+        for (ProjectionProperty projectionProperty : resolveProjectionProperties(projectionType)) {
+            String propertyName = projectionProperty.name();
             if (isNonPersistentProjectionProperty(projectionType, propertyName)) {
                 continue;
             }
@@ -109,14 +118,14 @@ public class ProjectionMetadataResolver {
             Field entityField = ReflectionUtils.findField(entityType, propertyName);
 
             if (Objects.equals(mappedPropertyPath, keyProperty)) {
-                fields.add(new ProjectionField(propertyName, ROOT_ALIAS + "." + keyColumn, keyColumn, descriptor.getPropertyType(),
+                fields.add(new ProjectionField(propertyName, ROOT_ALIAS + "." + keyColumn, keyColumn, projectionProperty.type(),
                         resolveTypeHandler(entityType, propertyName, null), true));
                 continue;
             }
 
             ProjectionCollectionAssociation collectionAssociation = resolveCollectionAssociation(projectionType,
                     propertyName,
-                    descriptor.getPropertyType(),
+                    projectionProperty.type(),
                     entityType,
                     tableInfo,
                     associations);
@@ -130,20 +139,20 @@ public class ProjectionMetadataResolver {
                 if (entityField != null && isAssociationField(entityField)) {
                     continue;
                 }
-                if (Collection.class.isAssignableFrom(descriptor.getPropertyType())) {
+                if (Collection.class.isAssignableFrom(projectionProperty.type())) {
                     continue;
                 }
                 String columnName = resolveColumnName(entityType, mappedPropertyPath, fieldInfo);
                 Class<? extends TypeHandler<?>> typeHandler = resolveTypeHandler(entityType, mappedPropertyPath, fieldInfo);
 
                 fields.add(new ProjectionField(propertyName, ROOT_ALIAS + "." + columnName, columnName,
-                        descriptor.getPropertyType(), typeHandler, false));
+                        projectionProperty.type(), typeHandler, false));
                 continue;
             }
 
                 ResolvedAssociationField associationField = resolveAssociationField(propertyName,
                     mappedPropertyPath,
-                    descriptor.getPropertyType(),
+                    projectionProperty.type(),
                     entityType,
                     associations,
                     normalizedSelectedFields);
@@ -173,6 +182,26 @@ public class ProjectionMetadataResolver {
             collectionJoinInFrom);
         cache.putIfAbsent(cacheKey, metadata);
         return metadata;
+    }
+
+    private List<ProjectionProperty> resolveProjectionProperties(Class<?> projectionType) {
+        if (projectionType.isRecord()) {
+            RecordComponent[] components = projectionType.getRecordComponents();
+            List<ProjectionProperty> properties = new ArrayList<>(components.length);
+            for (RecordComponent component : components) {
+                properties.add(new ProjectionProperty(component.getName(), component.getType()));
+            }
+            return properties;
+        }
+
+        List<ProjectionProperty> properties = new ArrayList<>();
+        for (java.beans.PropertyDescriptor descriptor : org.springframework.beans.BeanUtils.getPropertyDescriptors(projectionType)) {
+            if ("class".equals(descriptor.getName())) {
+                continue;
+            }
+            properties.add(new ProjectionProperty(descriptor.getName(), descriptor.getPropertyType()));
+        }
+        return properties;
     }
 
     private ProjectionCollectionAssociation resolveCollectionAssociation(Class<?> projectionType,
@@ -407,12 +436,12 @@ public class ProjectionMetadataResolver {
                 return null;
             }
 
-            TableInfo sourceTableInfo = TableInfoHelper.getTableInfo(currentType);
+            TableInfo sourceTableInfo = getTableInfo(currentType);
             Map<String, TableFieldInfo> sourceFieldMap = sourceTableInfo != null
                     ? sourceTableInfo.getFieldList().stream().collect(Collectors.toMap(TableFieldInfo::getProperty, Function.identity()))
                     : Map.of();
 
-            TableInfo targetTableInfo = TableInfoHelper.getTableInfo(targetType);
+            TableInfo targetTableInfo = getTableInfo(targetType);
             String targetTableName = targetTableInfo != null
                     ? targetTableInfo.getTableName()
                     : resolveTableNameByAnnotation(targetType);
@@ -532,7 +561,7 @@ public class ProjectionMetadataResolver {
             if (targetType == null || targetType == Object.class) {
                 continue;
             }
-            TableInfo targetTableInfo = TableInfoHelper.getTableInfo(targetType);
+            TableInfo targetTableInfo = getTableInfo(targetType);
             String targetTableName = targetTableInfo != null
                     ? targetTableInfo.getTableName()
                     : resolveTableNameByAnnotation(targetType);
@@ -641,7 +670,7 @@ public class ProjectionMetadataResolver {
         if (type.getAnnotation(TableName.class) != null) {
             return true;
         }
-        return TableInfoHelper.getTableInfo(type) != null;
+        return getTableInfo(type) != null;
     }
 
     private boolean hasAnyAnnotation(AnnotatedElement element, Set<String> annotationTypeNames) {
@@ -854,9 +883,9 @@ public class ProjectionMetadataResolver {
     private String resolveColumnByReflection(Class<?> entityType, String propertyName) {
         Field field = ReflectionUtils.findField(entityType, propertyName);
         if (field != null) {
-            TableField tableField = field.getAnnotation(TableField.class);
-            if (tableField != null && StringUtils.hasText(tableField.value())) {
-                return tableField.value();
+            String explicitColumnName = resolveExplicitColumnName(field);
+            if (StringUtils.hasText(explicitColumnName)) {
+                return explicitColumnName;
             }
         }
         return toSnakeCase(propertyName);
@@ -1036,7 +1065,7 @@ public class ProjectionMetadataResolver {
      * Accepts property name or actual column name; rejects unknown names.
      */
     public String resolveOrderColumn(Class<?> entityType, String orderColumn) {
-        TableInfo tableInfo = TableInfoHelper.getTableInfo(entityType);
+        TableInfo tableInfo = getTableInfo(entityType);
         if (tableInfo == null) {
             throw new IllegalArgumentException("No TableInfo found for entity type: " + entityType.getName());
         }
@@ -1072,12 +1101,51 @@ public class ProjectionMetadataResolver {
     private String resolveColumnName(Class<?> entityType, String propertyName, TableFieldInfo fieldInfo) {
         Field field = ReflectionUtils.findField(entityType, propertyName);
         if (field != null) {
-            TableField tableField = field.getAnnotation(TableField.class);
-            if (tableField != null && org.springframework.util.StringUtils.hasText(tableField.value())) {
-                return tableField.value();
+            String explicitColumnName = resolveExplicitColumnName(field);
+            if (org.springframework.util.StringUtils.hasText(explicitColumnName)) {
+                return explicitColumnName;
             }
         }
         return fieldInfo.getColumn();
+    }
+
+    private String resolveExplicitColumnName(Field field) {
+        TableField tableField = field.getAnnotation(TableField.class);
+        if (tableField != null && StringUtils.hasText(tableField.value())) {
+            return tableField.value();
+        }
+
+        String jpaColumnName = getAnnotationStringAttribute(field,
+                "name",
+                "jakarta.persistence.Column",
+                "javax.persistence.Column");
+        if (StringUtils.hasText(jpaColumnName)) {
+            return jpaColumnName;
+        }
+
+        return null;
+    }
+
+    private String getAnnotationStringAttribute(Field field,
+                                                String attributeName,
+                                                String... annotationClassNames) {
+        for (java.lang.annotation.Annotation annotation : field.getAnnotations()) {
+            String annotationName = annotation.annotationType().getName();
+            for (String className : annotationClassNames) {
+                if (!Objects.equals(className, annotationName)) {
+                    continue;
+                }
+                try {
+                    Method method = annotation.annotationType().getMethod(attributeName);
+                    Object value = method.invoke(annotation);
+                    if (value instanceof String text && StringUtils.hasText(text)) {
+                        return text;
+                    }
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")
@@ -1106,6 +1174,10 @@ public class ProjectionMetadataResolver {
         return null;
     }
 
+    private TableInfo getTableInfo(Class<?> entityType) {
+        return ProjectionTableInfoSupport.getTableInfo(configuration, entityType);
+    }
+
     private record AssociationMetadata(String propertyName,
                                        String sourceAlias,
                                        Class<?> targetEntityType,
@@ -1129,5 +1201,8 @@ public class ProjectionMetadataResolver {
     }
 
     private record ResolvedAssociationField(ProjectionField field, List<AssociationMetadata> associations) {
+    }
+
+    private record ProjectionProperty(String name, Class<?> type) {
     }
 }

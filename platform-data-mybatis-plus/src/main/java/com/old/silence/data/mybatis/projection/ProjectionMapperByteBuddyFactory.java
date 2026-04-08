@@ -91,12 +91,6 @@ public class ProjectionMapperByteBuddyFactory {
         }
     }
 
-    private void cleanupStaleEntries() {
-        synchronized (cacheByClassLoader) {
-            cacheByClassLoader.values().forEach(this::cleanupStaleEntries);
-        }
-    }
-
     private void cleanupStaleEntries(ConcurrentMap<String, WeakReference<Object>> cacheSegment) {
         cacheSegment.entrySet().removeIf(entry -> dereference(entry.getValue()) == null);
     }

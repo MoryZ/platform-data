@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.metadata.TableInfo;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.old.silence.data.mybatis.projection.ProjectionRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -48,14 +49,11 @@ public abstract class AbstractMyBatisPlusMapperTests<M extends BaseMapper<T>, T,
         Type superclass = getClass().getGenericSuperclass();
         if (superclass instanceof ParameterizedType) {
             Type[] types = ((ParameterizedType) superclass).getActualTypeArguments();
-            // M extends BaseMapper<T>
-            Type mapperType = types[0];
-            if (mapperType instanceof ParameterizedType) {
-                Type[] mapperArgs = ((ParameterizedType) mapperType).getActualTypeArguments();
-                this.entityType = (Class<T>) mapperArgs[0];
-            } else {
-                throw new IllegalStateException("Cannot resolve entity type");
+            if (types.length < 3 || !(types[1] instanceof Class) || !(types[2] instanceof Class)) {
+                throw new IllegalStateException("Cannot resolve generic types");
             }
+            // Resolve T and ID directly from <M, T, ID> to support both raw and parameterized mapper types.
+            this.entityType = (Class<T>) types[1];
             this.idType = (Class<ID>) types[2];
         } else {
             throw new IllegalStateException("Cannot resolve generic types");
@@ -347,13 +345,18 @@ public abstract class AbstractMyBatisPlusMapperTests<M extends BaseMapper<T>, T,
      * Verify update with projection DTO and customizer
      */
     protected <DTO> void verifyUpdateProjection(ID id, Class<DTO> dtoType, MockedEntityCustomizer<DTO> customizer) {
-        // TODO: Implement custom update logic for DTO
-        // This requires custom mapper methods to update entity from DTO
-        // Example:
-        // DTO dto = entityMockFactory.mockDtoForUpdate(id, dtoType, customizer);
-        // int rows = mapper.updateFromDto(dto);
-        // assertThat(rows).isEqualTo(1);
-        throw new UnsupportedOperationException("Update from DTO requires custom mapper method");
+        if (mapper instanceof ProjectionRepository<?, ?> projectionRepository) {
+            DTO dto = entityMockFactory.mockDtoForUpdate(id, dtoType, customizer);
+
+            @SuppressWarnings("unchecked")
+            ProjectionRepository<T, ID> typedProjectionRepository = (ProjectionRepository<T, ID>) projectionRepository;
+            int rows = typedProjectionRepository.updateProjection(dto);
+            assertThat(rows).isEqualTo(1);
+            return;
+        }
+
+        throw new UnsupportedOperationException(
+                "verifyUpdateProjection is not part of BaseMapper capability. Use MyBatisProjectionMapperTests instead.");
     }
 
     // ==================== Delete Methods ====================

@@ -5,6 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.old.silence.core.enums.EnumValue;
 import org.springframework.core.convert.support.DefaultConversionService;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,10 +18,50 @@ import java.util.Objects;
 
 final class ProjectionValueConverter {
 
-    private static final DefaultConversionService CONVERSION_SERVICE = new DefaultConversionService();
+    private static final DefaultConversionService CONVERSION_SERVICE;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    static {
+        CONVERSION_SERVICE = new DefaultConversionService();
+        registerDateTimeConverters(CONVERSION_SERVICE);
+    }
+
     private ProjectionValueConverter() {
+    }
+
+    private static void registerDateTimeConverters(DefaultConversionService service) {
+        service.addConverter(LocalDateTime.class, Instant.class, ProjectionValueConverter::localDateTimeToInstant);
+        service.addConverter(Instant.class, LocalDateTime.class, ProjectionValueConverter::instantToLocalDateTime);
+        service.addConverter(LocalDate.class, Instant.class, ProjectionValueConverter::localDateToInstant);
+        service.addConverter(Instant.class, LocalDate.class, ProjectionValueConverter::instantToLocalDate);
+        service.addConverter(LocalTime.class, Instant.class, ProjectionValueConverter::localTimeToInstant);
+        service.addConverter(Instant.class, LocalTime.class, ProjectionValueConverter::instantToLocalTime);
+        service.addConverter(ZonedDateTime.class, Instant.class, ZonedDateTime::toInstant);
+        service.addConverter(Instant.class, ZonedDateTime.class, zdt -> zdt.atZone(ZoneId.systemDefault()));
+    }
+
+    private static Instant localDateTimeToInstant(LocalDateTime ldt) {
+        return ldt == null ? null : ldt.atZone(ZoneId.systemDefault()).toInstant();
+    }
+
+    private static LocalDateTime instantToLocalDateTime(Instant instant) {
+        return instant == null ? null : LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+    }
+
+    private static Instant localDateToInstant(LocalDate ld) {
+        return ld == null ? null : ld.atStartOfDay(ZoneId.systemDefault()).toInstant();
+    }
+
+    private static LocalDate instantToLocalDate(Instant instant) {
+        return instant == null ? null : instant.atZone(ZoneId.systemDefault()).toLocalDate();
+    }
+
+    private static Instant localTimeToInstant(LocalTime lt) {
+        return lt == null ? null : lt.atDate(LocalDate.now()).atZone(ZoneId.systemDefault()).toInstant();
+    }
+
+    private static LocalTime instantToLocalTime(Instant instant) {
+        return instant == null ? null : instant.atZone(ZoneId.systemDefault()).toLocalTime();
     }
 
     static Map<String, Object> normalizeRow(ProjectionMetadata metadata, Map<String, Object> source) {

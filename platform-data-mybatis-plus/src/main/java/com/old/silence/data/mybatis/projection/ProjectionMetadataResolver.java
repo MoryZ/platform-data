@@ -150,7 +150,14 @@ public class ProjectionMetadataResolver {
                 continue;
             }
 
-                ResolvedAssociationField associationField = resolveAssociationField(propertyName,
+            // fieldInfo == null: field is not a direct table column
+            // Skip Collection fields that are not recognized associations
+            // (e.g., @OneToMany fields, or non-persistent Collection fields)
+            if (entityField != null && Collection.class.isAssignableFrom(entityField.getType())) {
+                continue;
+            }
+
+            ResolvedAssociationField associationField = resolveAssociationField(propertyName,
                     mappedPropertyPath,
                     projectionProperty.type(),
                     entityType,
@@ -803,7 +810,50 @@ public class ProjectionMetadataResolver {
         if (inferred != null) {
             return inferred.columnName();
         }
+
+        // Fallback: if targetFieldMap is empty or missing the mappedBy+Id field,
+        // try to resolve join column directly from the mappedBy field's annotations
+        if (mappedField != null) {
+            String joinColumnFromAnnotation = getJoinColumnAttribute(mappedField, "name");
+            if (StringUtils.hasText(joinColumnFromAnnotation)) {
+                return joinColumnFromAnnotation;
+            }
+
+            // Try to infer column name from field name (e.g., "user" -> "user_id")
+            String inferredColumn = toSnakeCase(mappedBy) + "_id";
+            if (hasFieldWithColumn(targetType, inferredColumn)) {
+                return inferredColumn;
+            }
+
+            // Try simple convention: field name + "_id"
+            String simpleInferred = mappedField.getName() + "Id";
+            if (hasFieldWithColumn(targetType, toSnakeCase(simpleInferred))) {
+                return toSnakeCase(simpleInferred);
+            }
+        }
+
         return null;
+    }
+
+    private boolean hasFieldWithColumn(Class<?> targetType, String columnName) {
+        TableInfo tableInfo = getTableInfo(targetType);
+        if (tableInfo != null) {
+            return tableInfo.getFieldList().stream()
+                    .anyMatch(f -> f.getColumn().equalsIgnoreCase(columnName));
+        }
+        // Fallback: check by reflection
+        for (Field field : targetType.getDeclaredFields()) {
+            if (Modifier.isStatic(field.getModifiers()) || Modifier.isTransient(field.getModifiers())) {
+                continue;
+            }
+            TableField tableField = field.getAnnotation(TableField.class);
+            if (tableField != null && StringUtils.hasText(tableField.value())) {
+                if (tableField.value().equalsIgnoreCase(columnName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String getAssociationAttribute(Field field, String attributeName) {

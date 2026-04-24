@@ -70,13 +70,16 @@ public class MybatisPlusConfig {
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor(ObjectProvider<TenantLineHandler> tenantLineHandlerProvider) {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
-        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
 
+        // 租户插件必须先添加，确保先执行租户条件，再进行分页
         tenantLineHandlerProvider.ifAvailable(handler -> {
             TenantLineInnerInterceptor tenantInterceptor = new TenantLineInnerInterceptor();
             tenantInterceptor.setTenantLineHandler(handler);
             interceptor.addInnerInterceptor(tenantInterceptor);
         });
+
+        // 分页插件后添加，在租户条件之后执行
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
 
         return interceptor;
     }

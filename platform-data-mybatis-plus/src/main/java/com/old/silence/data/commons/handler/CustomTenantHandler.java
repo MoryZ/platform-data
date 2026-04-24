@@ -13,7 +13,6 @@ import com.old.silence.data.commons.tenant.TenantTableRegistry;
  */
 public class CustomTenantHandler implements TenantLineHandler {
 
-    private static final String NO_TENANT = "NO_TENANT";
     private final TenantContextAware<String> tenantContextAware;
     private final TenantTableRegistry tenantTableRegistry;
 
@@ -27,7 +26,7 @@ public class CustomTenantHandler implements TenantLineHandler {
     public Expression getTenantId() {
         return tenantContextAware.getCurrentTenantId()
                 .map(StringValue::new)
-                .orElse(new StringValue(NO_TENANT)); // 使用一个特殊的租户值
+                .orElse(null); // 没有租户上下文时不添加租户条件
     }
 
 
@@ -38,11 +37,10 @@ public class CustomTenantHandler implements TenantLineHandler {
 
     @Override
     public boolean ignoreTable(String tableName) {
-        String tenantId = tenantContextAware.getCurrentTenantId().orElse(NO_TENANT);
-        if (NO_TENANT.equals(tenantId)) {
-            return true; // 特殊租户值时忽略租户过滤
+        // 没有租户上下文时，忽略所有表的租户过滤
+        if (tenantContextAware.getCurrentTenantId().isEmpty()) {
+            return true;
         }
-
         return !tenantTableRegistry.isTenantTable(tableName);
     }
 

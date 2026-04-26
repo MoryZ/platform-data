@@ -31,6 +31,7 @@ import com.old.silence.data.mybatis.test.fixture.mapper.UserProjectionMapperCont
 import com.old.silence.data.mybatis.test.fixture.projection.UserFinalDto;
 import com.old.silence.data.mybatis.test.fixture.projection.UserDto;
 import com.old.silence.data.mybatis.test.fixture.projection.TestUserView;
+import com.old.silence.data.mybatis.test.fixture.projection.TestUserWithUserRolesView;
 import com.old.silence.data.mybatis.test.fixture.projection.TestUserRecordDto;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.Test;
@@ -168,6 +169,44 @@ class ProjectionIntegrationTest {
 
         assertThat(page.getRecords()).hasSize(1);
         assertThat(page.getRecords().getFirst().getStatus()).isEqualTo(UserStatus.ACTIVE);
+    }
+
+    @Test
+    void shouldSupportInterfaceProjectionWithOneToManyCollection() {
+        ProjectionRepository<User, Long> repository = repositoryFactory.create(User.class);
+
+        QueryWrapper<User> queryWrapper = createEnabledUserQueryWrapper();
+        List<TestUserWithUserRolesView> list = repository.findByQuery(queryWrapper, TestUserWithUserRolesView.class);
+
+        assertThat(list).hasSize(2);
+        TestUserWithUserRolesView userA = list.stream()
+                .filter(user -> "user_a".equals(user.getUsername()))
+                .findFirst()
+                .orElseThrow();
+        TestUserWithUserRolesView userB = list.stream()
+                .filter(user -> "user_b".equals(user.getUsername()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(userA.getUserRoles()).hasSize(2);
+        assertThat(userA.getUserRoles()).extracting("roleId").containsExactlyInAnyOrder(1L, 2L);
+        assertThat(userB.getUserRoles()).hasSize(1);
+        assertThat(userB.getUserRoles()).extracting("roleId").containsExactly(2L);
+    }
+
+    @Test
+    void shouldSupportInterfaceProjectionWithOneToManyCollectionInPageQuery() {
+        ProjectionRepository<User, Long> repository = repositoryFactory.create(User.class);
+
+        QueryWrapper<User> queryWrapper = createEnabledUserQueryWrapper();
+        Page<?> page = new Page<>(1, 1);
+        page.addOrder(OrderItem.asc("id"));
+
+        IPage<TestUserWithUserRolesView> result = repository.findByQuery(queryWrapper, page, TestUserWithUserRolesView.class);
+
+        assertThat(result.getRecords()).hasSize(1);
+        assertThat(result.getRecords().getFirst().getUsername()).isEqualTo("user_a");
+        assertThat(result.getRecords().getFirst().getUserRoles()).hasSize(2);
     }
 
     @Test

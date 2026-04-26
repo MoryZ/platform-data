@@ -70,6 +70,12 @@ final class ProjectionValueConverter {
             Object rawValue = resolveRawValue(source, field);
             normalized.put(field.getPropertyName(), convertValue(rawValue, field, metadata.getProjectionType()));
         }
+        for (ProjectionCollectionAssociation association : metadata.getCollectionAssociations()) {
+            Object collectionValue = source.get(association.getProjectionPropertyName());
+            if (collectionValue != null) {
+                normalized.put(association.getProjectionPropertyName(), collectionValue);
+            }
+        }
         return normalized;
     }
 

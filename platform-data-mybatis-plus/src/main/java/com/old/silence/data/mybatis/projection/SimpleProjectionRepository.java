@@ -11,7 +11,9 @@ import org.springframework.beans.BeanUtils;
 
 import java.io.Serializable;
 import java.beans.PropertyDescriptor;
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -110,9 +112,10 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                 Collections.emptyList(),
                 extractConditionAssociationHints(queryWrapper));
         if (ProjectionResultMaterializer.requiresMapQuery(projectionType)) {
-            ProjectionResultMaterializer.validateCollectionCompatibility(projectionType, metadata);
-            List<java.util.Map<String, Object>> resultMaps = queryExecutor.selectMaps(queryWrapper, metadata);
-            return ProjectionResultMaterializer.materializeList(projectionType, metadata, resultMaps);
+            ProjectionMetadata mapMetadata = buildMapQueryMetadata(metadata);
+            List<java.util.Map<String, Object>> resultMaps = queryExecutor.selectMaps(queryWrapper, mapMetadata);
+            loadCollectionAssociationsToRows(resultMaps, mapMetadata);
+            return ProjectionResultMaterializer.materializeList(projectionType, mapMetadata, resultMaps);
         }
 
         List<P> results = queryExecutor.select(queryWrapper, metadata);
@@ -131,9 +134,10 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                 Collections.emptyList(),
                 extractConditionAssociationHints(queryWrapper));
         if (ProjectionResultMaterializer.requiresMapQuery(projectionType)) {
-            ProjectionResultMaterializer.validateCollectionCompatibility(projectionType, metadata);
-            IPage<java.util.Map<String, Object>> mapPage = queryExecutor.selectPageMaps(page, dataWrapper, queryWrapper, metadata);
-            return ProjectionResultMaterializer.materializePage(page, mapPage, projectionType, metadata);
+            ProjectionMetadata mapMetadata = buildMapQueryMetadata(metadata);
+            IPage<java.util.Map<String, Object>> mapPage = queryExecutor.selectPageMaps(page, dataWrapper, queryWrapper, mapMetadata);
+            loadCollectionAssociationsToRows(mapPage.getRecords(), mapMetadata);
+            return ProjectionResultMaterializer.materializePage(page, mapPage, projectionType, mapMetadata);
         }
 
         IPage<P> result = queryExecutor.selectPage(page, dataWrapper, queryWrapper, metadata);
@@ -149,14 +153,15 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
 
         for (ProjectionCollectionAssociation association : metadata.getCollectionAssociations()) {
             List<Object> sourceKeys = new ArrayList<>();
-            Map<Object, List<P>> sourceByKey = new HashMap<>();
+            Map<String, List<P>> sourceByKey = new HashMap<>();
             for (P record : records) {
                 BeanWrapperImpl beanWrapper = new BeanWrapperImpl(record);
                 Object sourceKey = beanWrapper.getPropertyValue(association.getSourceKeyProperty());
                 if (sourceKey == null) {
                     continue;
                 }
-                sourceByKey.computeIfAbsent(sourceKey, ignored -> {
+                String normalizedSourceKey = normalizeAssociationKey(sourceKey);
+                sourceByKey.computeIfAbsent(normalizedSourceKey, ignored -> {
                     sourceKeys.add(sourceKey);
                     return new ArrayList<>();
                 }).add(record);
@@ -218,9 +223,9 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                         targetByStrId.put(id.toString(), child);
                     }
                 }
-                for (Map.Entry<Object, List<P>> entry : sourceByKey.entrySet()) {
+                for (Map.Entry<String, List<P>> entry : sourceByKey.entrySet()) {
                     List<String> targetStrIds = sourceToTargetIds.getOrDefault(
-                            entry.getKey().toString(), Collections.emptyList());
+                            entry.getKey(), Collections.emptyList());
                     List<Object> related = new ArrayList<>();
                     for (String tId : targetStrIds) {
                         Object t = targetByStrId.get(tId);
@@ -249,17 +254,17 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                         Collections.emptyList());
                 List<?> children = queryExecutor.select(childrenQuery, childMetadata);
 
-                Map<Object, List<Object>> childrenBySourceKey = new HashMap<>();
+                Map<String, List<Object>> childrenBySourceKey = new HashMap<>();
                 for (Object child : children) {
                     BeanWrapperImpl childWrapper = new BeanWrapperImpl(child);
                     Object fk = childWrapper.getPropertyValue(association.getTargetFkProperty());
                     if (fk == null) {
                         continue;
                     }
-                    childrenBySourceKey.computeIfAbsent(fk, ignored -> new ArrayList<>()).add(child);
+                    childrenBySourceKey.computeIfAbsent(normalizeAssociationKey(fk), ignored -> new ArrayList<>()).add(child);
                 }
 
-                for (Map.Entry<Object, List<P>> entry : sourceByKey.entrySet()) {
+                for (Map.Entry<String, List<P>> entry : sourceByKey.entrySet()) {
                     List<Object> related = childrenBySourceKey.getOrDefault(entry.getKey(), Collections.emptyList());
                     for (P record : entry.getValue()) {
                         BeanWrapperImpl beanWrapper = new BeanWrapperImpl(record);
@@ -274,6 +279,201 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                 }
             }
         }
+    }
+
+    private ProjectionMetadata buildMapQueryMetadata(ProjectionMetadata metadata) {
+        if (metadata.getCollectionAssociations().isEmpty()) {
+            return metadata;
+        }
+
+        List<ProjectionField> fields = new ArrayList<>(metadata.getFields());
+        boolean changed = false;
+        for (ProjectionCollectionAssociation association : metadata.getCollectionAssociations()) {
+            if (containsSourceKeyField(fields, association)) {
+                continue;
+            }
+            String alias = sourceKeyAlias(association);
+            fields.add(new ProjectionField(alias,
+                    "t0." + association.getSourceKeyColumn() + " AS " + alias,
+                    alias,
+                    Object.class,
+                    null,
+                    false));
+            changed = true;
+        }
+
+        if (!changed) {
+            return metadata;
+        }
+
+        return new ProjectionMetadata(metadata.getProjectionType(),
+                metadata.getEntityType(),
+                metadata.getTableName(),
+                metadata.getFromClause(),
+                fields,
+                metadata.getCollectionAssociations(),
+                metadata.getSelectionKey() + "|map-collection-source",
+                metadata.isCollectionJoinInFrom());
+    }
+
+    private boolean containsSourceKeyField(List<ProjectionField> fields, ProjectionCollectionAssociation association) {
+        for (ProjectionField field : fields) {
+            if (association.getSourceKeyProperty().equals(field.getPropertyName())
+                    || association.getSourceKeyColumn().equalsIgnoreCase(field.getColumnName())
+                    || sourceKeyAlias(association).equals(field.getPropertyName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void loadCollectionAssociationsToRows(List<Map<String, Object>> rows, ProjectionMetadata metadata) {
+        if (rows == null || rows.isEmpty() || metadata.getCollectionAssociations().isEmpty()) {
+            return;
+        }
+
+        for (ProjectionCollectionAssociation association : metadata.getCollectionAssociations()) {
+            Map<String, List<Map<String, Object>>> rowsBySourceKey = new LinkedHashMap<>();
+            List<Object> sourceKeys = new ArrayList<>();
+
+            for (Map<String, Object> row : rows) {
+                Object sourceKey = resolveSourceKeyFromRow(row, association);
+                if (sourceKey == null) {
+                    row.put(association.getProjectionPropertyName(), new ArrayList<>());
+                    continue;
+                }
+                String normalizedSourceKey = normalizeAssociationKey(sourceKey);
+                if (!rowsBySourceKey.containsKey(normalizedSourceKey)) {
+                    rowsBySourceKey.put(normalizedSourceKey, new ArrayList<>());
+                    sourceKeys.add(sourceKey);
+                }
+                rowsBySourceKey.get(normalizedSourceKey).add(row);
+            }
+
+            if (sourceKeys.isEmpty()) {
+                continue;
+            }
+
+            if (association.getJoinTableName() != null) {
+                List<Map<String, Object>> pairs = queryExecutor.selectJoinTablePairs(
+                        association.getJoinTableName(),
+                        association.getJoinTableSourceCol(),
+                        association.getJoinTableTargetCol(),
+                        sourceKeys);
+
+                if (pairs.isEmpty()) {
+                    for (List<Map<String, Object>> groupedRows : rowsBySourceKey.values()) {
+                        for (Map<String, Object> row : groupedRows) {
+                            row.put(association.getProjectionPropertyName(), new ArrayList<>());
+                        }
+                    }
+                    continue;
+                }
+
+                Map<String, List<String>> sourceToTargetIds = new HashMap<>();
+                Set<Object> targetIds = new LinkedHashSet<>();
+                for (Map<String, Object> pair : pairs) {
+                    Object src = getMapValueIgnoreCase(pair, association.getJoinTableSourceCol());
+                    Object tgt = getMapValueIgnoreCase(pair, association.getJoinTableTargetCol());
+                    if (src == null || tgt == null) {
+                        continue;
+                    }
+                    sourceToTargetIds.computeIfAbsent(src.toString(), ignored -> new ArrayList<>()).add(tgt.toString());
+                    targetIds.add(tgt);
+                }
+
+                if (targetIds.isEmpty()) {
+                    continue;
+                }
+
+                TableInfo targetTableInfo = queryExecutor.requireTableInfo(association.getTargetEntityType());
+                QueryWrapper targetQuery = new QueryWrapper();
+                targetQuery.in(targetTableInfo.getKeyColumn(), targetIds);
+
+                ProjectionMetadata childMetadata = metadataResolver.resolve(association.getElementType(),
+                        association.getTargetEntityType(),
+                        Collections.emptyList());
+                List<?> children = selectAssociationChildren(targetQuery, childMetadata, association.getElementType());
+
+                Map<String, Object> childrenByTargetId = new HashMap<>();
+                for (Object child : children) {
+                    Object childId = new BeanWrapperImpl(child).getPropertyValue(targetTableInfo.getKeyProperty());
+                    if (childId != null) {
+                        childrenByTargetId.put(childId.toString(), child);
+                    }
+                }
+
+                for (Map.Entry<String, List<Map<String, Object>>> entry : rowsBySourceKey.entrySet()) {
+                    List<String> targetStrIds = sourceToTargetIds.getOrDefault(entry.getKey(), Collections.emptyList());
+                    List<Object> related = new ArrayList<>();
+                    for (String targetId : targetStrIds) {
+                        Object child = childrenByTargetId.get(targetId);
+                        if (child != null) {
+                            related.add(child);
+                        }
+                    }
+                    for (Map<String, Object> row : entry.getValue()) {
+                        row.put(association.getProjectionPropertyName(), related);
+                    }
+                }
+                continue;
+            }
+
+            QueryWrapper childrenQuery = new QueryWrapper();
+            childrenQuery.in(association.getTargetFkColumn(), sourceKeys);
+            ProjectionMetadata childMetadata = metadataResolver.resolve(association.getElementType(),
+                    association.getTargetEntityType(),
+                    Collections.emptyList());
+            List<?> children = selectAssociationChildren(childrenQuery, childMetadata, association.getElementType());
+
+            Map<String, List<Object>> childrenBySourceKey = new HashMap<>();
+            for (Object child : children) {
+                Object fkValue = new BeanWrapperImpl(child).getPropertyValue(association.getTargetFkProperty());
+                if (fkValue == null) {
+                    continue;
+                }
+                childrenBySourceKey.computeIfAbsent(normalizeAssociationKey(fkValue), ignored -> new ArrayList<>()).add(child);
+            }
+
+            for (Map.Entry<String, List<Map<String, Object>>> entry : rowsBySourceKey.entrySet()) {
+                List<Object> related = childrenBySourceKey.getOrDefault(entry.getKey(), Collections.emptyList());
+                for (Map<String, Object> row : entry.getValue()) {
+                    row.put(association.getProjectionPropertyName(), related);
+                }
+            }
+        }
+    }
+
+    private List<?> selectAssociationChildren(QueryWrapper<?> queryWrapper,
+                                              ProjectionMetadata metadata,
+                                              Class<?> projectionType) {
+        if (!ProjectionResultMaterializer.requiresMapQuery(projectionType)) {
+            return queryExecutor.select(queryWrapper, metadata);
+        }
+
+        ProjectionMetadata mapMetadata = buildMapQueryMetadata(metadata);
+        List<Map<String, Object>> childRows = queryExecutor.selectMaps(queryWrapper, mapMetadata);
+        loadCollectionAssociationsToRows(childRows, mapMetadata);
+        return ProjectionResultMaterializer.materializeList(projectionType, mapMetadata, childRows);
+    }
+
+    private Object resolveSourceKeyFromRow(Map<String, Object> row, ProjectionCollectionAssociation association) {
+        Object sourceKey = getMapValueIgnoreCase(row, sourceKeyAlias(association));
+        if (sourceKey != null) {
+            return sourceKey;
+        }
+
+        sourceKey = getMapValueIgnoreCase(row, association.getSourceKeyProperty());
+        if (sourceKey != null) {
+            return sourceKey;
+        }
+
+        return getMapValueIgnoreCase(row, association.getSourceKeyColumn());
+    }
+
+    private String sourceKeyAlias(ProjectionCollectionAssociation association) {
+        return "__pd_source_" + association.getProjectionPropertyName();
     }
 
     @Override
@@ -459,6 +659,20 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
         v = map.get(key.toUpperCase());
         if (v != null) return v;
         return map.get(key.toLowerCase());
+    }
+
+    private static String normalizeAssociationKey(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            try {
+                return new BigDecimal(value.toString()).stripTrailingZeros().toPlainString();
+            } catch (NumberFormatException ignored) {
+                return value.toString();
+            }
+        }
+        return value.toString();
     }
 
     private List<String> extractConditionAssociationHints(Wrapper<T> queryWrapper) {

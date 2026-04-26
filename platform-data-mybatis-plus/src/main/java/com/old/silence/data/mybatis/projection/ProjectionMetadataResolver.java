@@ -229,12 +229,7 @@ public class ProjectionMetadataResolver {
             return null;
         }
 
-        Field projectionField = ReflectionUtils.findField(projectionType, projectionPropertyName);
-        if (projectionField == null) {
-            return null;
-        }
-
-        Class<?> elementType = resolveCollectionElementType(projectionField);
+        Class<?> elementType = resolveCollectionElementType(projectionType, projectionPropertyName);
         if (elementType == null) {
             throw new IllegalArgumentException("Cannot resolve element type for projection collection property '"
                     + projectionPropertyName + "' in " + projectionType.getName());
@@ -285,6 +280,37 @@ public class ProjectionMetadataResolver {
         }
         Type type = parameterizedType.getActualTypeArguments()[0];
         return type instanceof Class<?> clazz ? clazz : null;
+    }
+
+    private Class<?> resolveCollectionElementType(Class<?> projectionType, String projectionPropertyName) {
+        Field field = ReflectionUtils.findField(projectionType, projectionPropertyName);
+        if (field != null) {
+            return resolveCollectionElementType(field);
+        }
+
+        Method getter = resolveProjectionGetter(projectionType, projectionPropertyName);
+        if (getter == null) {
+            return null;
+        }
+
+        Type genericType = getter.getGenericReturnType();
+        if (!(genericType instanceof ParameterizedType parameterizedType)) {
+            return null;
+        }
+        if (parameterizedType.getActualTypeArguments().length != 1) {
+            return null;
+        }
+        Type type = parameterizedType.getActualTypeArguments()[0];
+        return type instanceof Class<?> clazz ? clazz : null;
+    }
+
+    private Method resolveProjectionGetter(Class<?> projectionType, String projectionPropertyName) {
+        String capitalized = StringUtils.capitalize(projectionPropertyName);
+        Method getter = ReflectionUtils.findMethod(projectionType, "get" + capitalized);
+        if (getter != null) {
+            return getter;
+        }
+        return ReflectionUtils.findMethod(projectionType, "is" + capitalized);
     }
 
     private String resolveSourceReferencedProperty(TableInfo sourceTableInfo, String referencedColumn) {

@@ -3,7 +3,7 @@ package com.old.silence.data.commons.domain;
 import java.time.Instant;
 
 /**
- * @author murrayZhang
+ * @author moryzang
  */
 public class AuditableVo {
 

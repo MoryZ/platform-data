@@ -15,6 +15,7 @@ import com.baomidou.mybatisplus.core.injector.DefaultSqlInjector;
 import com.baomidou.mybatisplus.core.injector.ISqlInjector;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.handler.TenantLineHandler;
+import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.TenantLineInnerInterceptor;
 import com.old.silence.core.security.TenantContextAware;
@@ -77,7 +78,8 @@ public class MybatisPlusConfig {
             tenantInterceptor.setTenantLineHandler(handler);
             interceptor.addInnerInterceptor(tenantInterceptor);
         });
-
+        // 一定要把乐观锁插件加上
+        interceptor.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
         // 分页插件后添加，在租户条件之后执行
         interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
 

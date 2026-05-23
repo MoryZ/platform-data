@@ -313,7 +313,8 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
                 fields,
                 metadata.getCollectionAssociations(),
                 metadata.getSelectionKey() + "|map-collection-source",
-                metadata.isCollectionJoinInFrom());
+                metadata.isCollectionJoinInFrom(),
+                metadata.getAdditionalFields());
     }
 
     private boolean containsSourceKeyField(List<ProjectionField> fields, ProjectionCollectionAssociation association) {

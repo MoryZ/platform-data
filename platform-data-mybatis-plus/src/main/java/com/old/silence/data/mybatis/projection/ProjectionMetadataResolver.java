@@ -8,6 +8,8 @@ import com.baomidou.mybatisplus.core.metadata.TableInfo;
 import com.old.silence.data.commons.annotation.RelationalQueryProperty;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.type.TypeHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 
@@ -56,6 +58,8 @@ public class ProjectionMetadataResolver {
         "order",
         "group"
     );
+    private static final Logger log = LoggerFactory.getLogger(ProjectionMetadataResolver.class);
+
 
     private final ConcurrentMap<String, ProjectionMetadata> cache = new ConcurrentHashMap<>();
     private volatile Configuration configuration;
@@ -136,18 +140,26 @@ public class ProjectionMetadataResolver {
 
             TableFieldInfo fieldInfo = fieldMap.get(mappedPropertyPath);
             if (fieldInfo != null) {
+                // 如果 fieldInfo 存在且实体字段是关联字段，但投影属性类型不是接口，
+                // 则跳过关联处理，直接使用 fieldMap（这是旧的行为，保持兼容性）
+                if (entityField != null && isAssociationField(entityField) && !projectionProperty.type().isInterface()) {
+                    continue;
+                }
                 if (entityField != null && isAssociationField(entityField)) {
-                    continue;
-                }
-                if (Collection.class.isAssignableFrom(projectionProperty.type())) {
-                    continue;
-                }
-                String columnName = resolveColumnName(entityType, mappedPropertyPath, fieldInfo);
-                Class<? extends TypeHandler<?>> typeHandler = resolveTypeHandler(entityType, mappedPropertyPath, fieldInfo);
+                    // 投影属性类型是接口，应该走关联处理（跳过 fieldMap）
+                    fieldInfo = null;
+                } else {
+                    // 普通字段，直接使用 fieldMap
+                    if (Collection.class.isAssignableFrom(projectionProperty.type())) {
+                        continue;
+                    }
+                    String columnName = resolveColumnName(entityType, mappedPropertyPath, fieldInfo);
+                    Class<? extends TypeHandler<?>> typeHandler = resolveTypeHandler(entityType, mappedPropertyPath, fieldInfo);
 
-                fields.add(new ProjectionField(propertyName, ROOT_ALIAS + "." + columnName, columnName,
-                        projectionProperty.type(), typeHandler, false));
-                continue;
+                    fields.add(new ProjectionField(propertyName, ROOT_ALIAS + "." + columnName, columnName,
+                            projectionProperty.type(), typeHandler, false));
+                    continue;
+                }
             }
 
             // fieldInfo == null: field is not a direct table column
@@ -164,10 +176,18 @@ public class ProjectionMetadataResolver {
                     associations,
                     normalizedSelectedFields);
             if (associationField == null) {
+                log.error("[ProjectionMetadataResolver] FAILED to resolve property: {}, associations available: {}", propertyName,
+                        associations.stream().map(a -> a.propertyName() + "->" + a.targetEntityType().getSimpleName()).collect(Collectors.joining(", ")));
                 throw new IllegalArgumentException("Projection property '" + propertyName + "' not found in entity "
                         + entityType.getName());
             }
             fields.add(associationField.field());
+            // 添加关联的额外字段（如嵌套接口的 project_* 字段）
+            for (ProjectionField af : associationField.additionalFields()) {
+                if (!fields.stream().anyMatch(f -> f.getPropertyName().equals(af.getPropertyName()))) {
+                    fields.add(af);
+                }
+            }
             for (AssociationMetadata association : associationField.associations()) {
                 usedAssociations.putIfAbsent(association.alias(), association);
             }
@@ -179,14 +199,24 @@ public class ProjectionMetadataResolver {
         String fromClause = buildFromClause(tableInfo.getTableName(), usedAssociations.values());
         String statementKey = selectionKey + "@" + conditionKey;
         boolean collectionJoinInFrom = usedAssociations.values().stream().anyMatch(AssociationMetadata::collectionLike);
+        
+        List<ProjectionField> additionalFields = fields.stream().filter(f -> f.getPropertyName().contains("_")).toList();
+        List<ProjectionField> allSelectFields = new ArrayList<>(selectedProjectionFields);
+        for (ProjectionField af : additionalFields) {
+            if (allSelectFields.stream().noneMatch(f -> f.getPropertyName().equals(af.getPropertyName()))) {
+                allSelectFields.add(af);
+            }
+        }
+        
         ProjectionMetadata metadata = new ProjectionMetadata(projectionType,
                 entityType,
                 tableInfo.getTableName(),
                 fromClause,
-                selectedProjectionFields,
+                allSelectFields,
                 collectionAssociations,
-            statementKey,
-            collectionJoinInFrom);
+                statementKey,
+                collectionJoinInFrom,
+                additionalFields);
         cache.putIfAbsent(cacheKey, metadata);
         return metadata;
     }
@@ -254,6 +284,12 @@ public class ProjectionMetadataResolver {
 
         // OneToMany: FK is on target side
         String targetFkProperty = resolveTargetPropertyByColumn(association.targetFieldMap(), association.joinColumn());
+        if (!StringUtils.hasText(targetFkProperty)) {
+            targetFkProperty = resolveTargetPropertyByJoinColumnAnnotation(association.targetEntityType(), association.joinColumn());
+        }
+        if (!StringUtils.hasText(targetFkProperty)) {
+            targetFkProperty = inferTargetPropertyByColumnName(association.joinColumn());
+        }
         if (!StringUtils.hasText(targetFkProperty)) {
             throw new IllegalArgumentException("Cannot resolve foreign key property for collection association '"
                     + projectionPropertyName + "' by column " + association.joinColumn());
@@ -335,6 +371,56 @@ public class ProjectionMetadataResolver {
         return null;
     }
 
+    /**
+     * Try to resolve the foreign key property by looking at @JoinColumn annotations on the target entity.
+     * This handles cases where the FK field is a ManyToOne/OneToOne association (not stored in TableFieldInfo).
+     */
+    private String resolveTargetPropertyByJoinColumnAnnotation(Class<?> targetEntityType, String columnName) {
+        for (Field field : targetEntityType.getDeclaredFields()) {
+            String joinColumnName = getJoinColumnAttribute(field, "name");
+            if (Objects.equals(joinColumnName, columnName)) {
+                return field.getName();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Fallback: infer property name from column name by removing common suffixes like "_id".
+     * e.g., "project_id" -> "projectId", "owner_id" -> "ownerId"
+     */
+    private String inferTargetPropertyByColumnName(String columnName) {
+        if (!StringUtils.hasText(columnName)) {
+            return null;
+        }
+        String lower = columnName.toLowerCase();
+        if (lower.endsWith("_id")) {
+            String base = columnName.substring(0, columnName.length() - 3);
+            return toCamelCase(base);
+        }
+        return toCamelCase(columnName);
+    }
+
+    private String toCamelCase(String snakeCase) {
+        if (!StringUtils.hasText(snakeCase)) {
+            return snakeCase;
+        }
+        StringBuilder result = new StringBuilder();
+        boolean capitalizeNext = false;
+        for (int i = 0; i < snakeCase.length(); i++) {
+            char c = snakeCase.charAt(i);
+            if (c == '_') {
+                capitalizeNext = true;
+            } else if (capitalizeNext) {
+                result.append(Character.toUpperCase(c));
+                capitalizeNext = false;
+            } else {
+                result.append(Character.toLowerCase(c));
+            }
+        }
+        return result.toString();
+    }
+
     private String buildFromClause(String tableName, Collection<AssociationMetadata> associations) {
         StringBuilder fromClause = new StringBuilder(tableName).append(" ").append(ROOT_ALIAS);
         if (associations.isEmpty()) {
@@ -397,8 +483,23 @@ public class ProjectionMetadataResolver {
             String targetPropertyName = resolveAssociatedPropertyName(projectionPropertyName,
                     mappedPropertyPath,
                     association.propertyName());
+
             if (!StringUtils.hasText(targetPropertyName)) {
-                continue;
+                // 当投影属性名正好等于关联属性名时（如 "job"），resolveAssociatedPropertyName 会返回 null
+                // 此时应该使用关联实体的主键作为默认选择
+                if (projectionPropertyName.equals(association.propertyName())) {
+                    // 如果投影属性类型是接口（如 JobView），则选择关联表的所有字段
+                    if (projectionPropertyType.isInterface()) {
+                        List<ProjectionField> fields = resolveInterfaceProjectionFields(projectionPropertyName,
+                                projectionPropertyType, association);
+                        if (!fields.isEmpty()) {
+                            return new ResolvedAssociationField(fields.get(0), List.of(association), fields);
+                        }
+                    }
+                    targetPropertyName = association.targetKeyProperty();
+                } else {
+                    continue;
+                }
             }
             if (association.collectionLike()) {
                 throw new IllegalArgumentException("Collection association property '" + association.propertyName()
@@ -579,8 +680,8 @@ public class ProjectionMetadataResolver {
     }
 
     private List<AssociationMetadata> resolveAssociations(Class<?> entityType,
-                                                          TableInfo tableInfo,
-                                                          Map<String, TableFieldInfo> fieldMap) {
+                                                         TableInfo tableInfo,
+                                                         Map<String, TableFieldInfo> fieldMap) {
         List<AssociationMetadata> associations = new ArrayList<>();
         Field[] fields = entityType.getDeclaredFields();
         int aliasIndex = 1;
@@ -1276,9 +1377,71 @@ public class ProjectionMetadataResolver {
                                              Class<? extends TypeHandler<?>> typeHandler) {
     }
 
-    private record ResolvedAssociationField(ProjectionField field, List<AssociationMetadata> associations) {
+    private record ResolvedAssociationField(ProjectionField field,
+                                            List<AssociationMetadata> associations,
+                                            List<ProjectionField> additionalFields) {
+        private ResolvedAssociationField(ProjectionField field, List<AssociationMetadata> associations) {
+            this(field, associations, List.of());
+        }
     }
 
     private record ProjectionProperty(String name, Class<?> type) {
+    }
+
+    private List<ProjectionField> resolveInterfaceProjectionFields(String projectionPropertyName,
+                                                                   Class<?> projectionInterface,
+                                                                   AssociationMetadata association) {
+        List<ProjectionField> fields = new ArrayList<>();
+        Class<?> targetType = association.targetEntityType();
+        Map<String, AssociationColumnMetadata> targetFieldMap = association.targetFieldMap();
+
+        for (Method method : projectionInterface.getDeclaredMethods()) {
+            if (method.getParameterCount() != 0 || !org.springframework.util.StringUtils.hasText(method.getName())
+                    || (method.getName().startsWith("is") && method.getName().length() > 2)) {
+                continue;
+            }
+
+            String propertyName;
+            if (method.getName().startsWith("get")) {
+                propertyName = decapitalize(method.getName().substring(3));
+            } else if (method.getName().startsWith("is")) {
+                propertyName = decapitalize(method.getName().substring(2));
+            } else {
+                continue;
+            }
+
+            AssociationColumnMetadata targetField = targetFieldMap.get(propertyName);
+            if (targetField != null) {
+                String alias = projectionPropertyName + "_" + propertyName;
+                fields.add(new ProjectionField(alias,
+                        association.alias() + "." + targetField.columnName() + " AS " + alias,
+                        alias,
+                        method.getReturnType(),
+                        targetField.typeHandler(),
+                        false));
+            }
+        }
+        
+        // 添加投影属性本身的字段（用于 ResultMap），实际的嵌套字段已在上面添加
+        String joinColumn = association.joinColumn();
+        String keyColumn = association.targetKeyColumn();
+        fields.add(0, new ProjectionField(projectionPropertyName,
+                association.alias() + "." + keyColumn + " AS " + projectionPropertyName,
+                projectionPropertyName,
+                projectionInterface,
+                null,
+                false));
+        
+        return fields;
+    }
+
+    private String decapitalize(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        if (value.length() == 1) {
+            return value.toLowerCase();
+        }
+        return Character.toLowerCase(value.charAt(0)) + value.substring(1);
     }
 }

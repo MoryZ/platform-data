@@ -15,18 +15,19 @@ public class ProjectionMetadata {
     private final List<ProjectionCollectionAssociation> collectionAssociations;
     private final String selectionKey;
     private final boolean collectionJoinInFrom;
+    private final List<ProjectionField> additionalFields;
 
     public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
                               List<ProjectionField> fields,
                               String selectionKey) {
-        this(projectionType, entityType, tableName, tableName, fields, List.of(), selectionKey, false);
+        this(projectionType, entityType, tableName, tableName, fields, List.of(), selectionKey, false, List.of());
     }
 
     public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
                               String fromClause,
                               List<ProjectionField> fields,
                               String selectionKey) {
-        this(projectionType, entityType, tableName, fromClause, fields, List.of(), selectionKey, false);
+        this(projectionType, entityType, tableName, fromClause, fields, List.of(), selectionKey, false, List.of());
     }
 
     public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
@@ -34,7 +35,7 @@ public class ProjectionMetadata {
                               List<ProjectionField> fields,
                               List<ProjectionCollectionAssociation> collectionAssociations,
                               String selectionKey) {
-        this(projectionType, entityType, tableName, fromClause, fields, collectionAssociations, selectionKey, false);
+        this(projectionType, entityType, tableName, fromClause, fields, collectionAssociations, selectionKey, false, List.of());
     }
 
     public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
@@ -43,6 +44,16 @@ public class ProjectionMetadata {
                               List<ProjectionCollectionAssociation> collectionAssociations,
                               String selectionKey,
                               boolean collectionJoinInFrom) {
+        this(projectionType, entityType, tableName, fromClause, fields, collectionAssociations, selectionKey, collectionJoinInFrom, List.of());
+    }
+
+    public ProjectionMetadata(Class<?> projectionType, Class<?> entityType, String tableName,
+                              String fromClause,
+                              List<ProjectionField> fields,
+                              List<ProjectionCollectionAssociation> collectionAssociations,
+                              String selectionKey,
+                              boolean collectionJoinInFrom,
+                              List<ProjectionField> additionalFields) {
         this.projectionType = projectionType;
         this.entityType = entityType;
         this.tableName = tableName;
@@ -51,6 +62,7 @@ public class ProjectionMetadata {
         this.collectionAssociations = collectionAssociations;
         this.selectionKey = selectionKey;
         this.collectionJoinInFrom = collectionJoinInFrom;
+        this.additionalFields = additionalFields;
     }
 
     public Class<?> getProjectionType() {
@@ -88,5 +100,9 @@ public class ProjectionMetadata {
 
     public boolean isCollectionJoinInFrom() {
         return collectionJoinInFrom;
+    }
+
+    public List<ProjectionField> getAdditionalFields() {
+        return additionalFields;
     }
 }

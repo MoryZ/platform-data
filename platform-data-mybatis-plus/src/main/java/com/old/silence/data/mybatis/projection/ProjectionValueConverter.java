@@ -11,12 +11,14 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
-final class ProjectionValueConverter {
+public final class ProjectionValueConverter {
 
     private static final DefaultConversionService CONVERSION_SERVICE;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -64,12 +66,27 @@ final class ProjectionValueConverter {
         return instant == null ? null : instant.atZone(ZoneId.systemDefault()).toLocalTime();
     }
 
-    static Map<String, Object> normalizeRow(ProjectionMetadata metadata, Map<String, Object> source) {
+    public static Map<String, Object> normalizeRow(ProjectionMetadata metadata, Map<String, Object> source) {
         Map<String, Object> normalized = new LinkedHashMap<>();
+        Set<String> nestedInterfacePrefixes = new java.util.HashSet<>();
+
+        // 首先处理嵌套接口字段
+        normalizeNestedInterfaces(metadata, source, normalized, nestedInterfacePrefixes);
+
+        // 然后处理普通字段，跳过已经是嵌套接口的字段和对应的展平字段
         for (ProjectionField field : metadata.getFields()) {
+            String propertyName = field.getPropertyName();
+            if (nestedInterfacePrefixes.contains(propertyName)) {
+                continue;
+            }
+            // 跳过被嵌套对象消费的展平字段（如 owner_username）
+            if (propertyName.contains("_") && isFlattenedFieldOfNestedInterface(propertyName, nestedInterfacePrefixes)) {
+                continue;
+            }
             Object rawValue = resolveRawValue(source, field);
-            normalized.put(field.getPropertyName(), convertValue(rawValue, field, metadata.getProjectionType()));
+            normalized.put(propertyName, convertValue(rawValue, field, metadata.getProjectionType()));
         }
+
         for (ProjectionCollectionAssociation association : metadata.getCollectionAssociations()) {
             Object collectionValue = source.get(association.getProjectionPropertyName());
             if (collectionValue != null) {
@@ -79,7 +96,65 @@ final class ProjectionValueConverter {
         return normalized;
     }
 
-    static List<Map<String, Object>> normalizeRows(ProjectionMetadata metadata, List<Map<String, Object>> sourceList) {
+    private static boolean isFlattenedFieldOfNestedInterface(String propertyName, Set<String> nestedInterfacePrefixes) {
+        int underscoreIndex = propertyName.indexOf('_');
+        if (underscoreIndex > 0) {
+            String prefix = propertyName.substring(0, underscoreIndex);
+            return nestedInterfacePrefixes.contains(prefix);
+        }
+        return false;
+    }
+
+    private static void normalizeNestedInterfaces(ProjectionMetadata metadata, Map<String, Object> source, Map<String, Object> normalized, Set<String> nestedInterfacePrefixes) {
+        Map<String, Map<String, Object>> nestedMaps = new LinkedHashMap<>();
+        
+        // 遍历所有字段，包括 additionalFields
+        List<ProjectionField> allFields = new ArrayList<>(metadata.getFields());
+        if (metadata.getAdditionalFields() != null && !metadata.getAdditionalFields().isEmpty()) {
+            allFields.addAll(metadata.getAdditionalFields());
+        }
+        
+        for (ProjectionField field : allFields) {
+            if (field.getPropertyName().contains("_")) {
+                String[] parts = field.getPropertyName().split("_", 2);
+                String prefix = parts[0];
+                String nestedProperty = parts[1];
+                
+                Map<String, Object> nestedValues = nestedMaps.computeIfAbsent(prefix, k -> new LinkedHashMap<>());
+                
+                Object rawValue = ProjectionPropertyAccessSupport.resolveValue(source,
+                        field.getPropertyName(), field.getColumnName(), field.getJavaType());
+                nestedValues.put(nestedProperty, rawValue);
+            }
+        }
+        
+        for (Map.Entry<String, Map<String, Object>> entry : nestedMaps.entrySet()) {
+            String prefix = entry.getKey();
+            Map<String, Object> values = entry.getValue();
+            
+            Class<?> interfaceType = findInterfaceType(metadata, prefix);
+            if (interfaceType != null && !values.isEmpty()) {
+                Object nestedProxy = InterfaceProjectionFactory.create(interfaceType, values);
+                normalized.put(prefix, nestedProxy);
+                nestedInterfacePrefixes.add(prefix);
+            }
+        }
+    }
+    
+    private static Class<?> findInterfaceType(ProjectionMetadata metadata, String prefix) {
+        List<ProjectionField> allFields = new ArrayList<>(metadata.getFields());
+        if (metadata.getAdditionalFields() != null) {
+            allFields.addAll(metadata.getAdditionalFields());
+        }
+        for (ProjectionField field : allFields) {
+            if (field.getPropertyName().equals(prefix) && field.getJavaType().isInterface()) {
+                return field.getJavaType();
+            }
+        }
+        return null;
+    }
+
+    public static List<Map<String, Object>> normalizeRows(ProjectionMetadata metadata, List<Map<String, Object>> sourceList) {
         return sourceList.stream().map(source -> normalizeRow(metadata, source)).toList();
     }
 

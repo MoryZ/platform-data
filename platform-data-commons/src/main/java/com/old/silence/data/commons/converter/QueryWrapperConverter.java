@@ -83,7 +83,8 @@ public class QueryWrapperConverter {
             return;
         }
 
-        String column = metadata.columnName;
+        // Add table alias if column name has no alias (no dot separator)
+        String column = qualifyColumnWithAlias(metadata.columnName, "t0");
         Type operator = metadata.operator;
 
         switch (operator) {
@@ -152,6 +153,21 @@ public class QueryWrapperConverter {
         if (metadata.ignoreCase && value instanceof String) {
             queryWrapper.apply("LOWER({0}) = LOWER({1})", column, value);
         }
+    }
+
+    /**
+     * Qualify column name with table alias if it doesn't already have one.
+     * Handles nested paths like "job_group.group_name" which already have an alias.
+     */
+    private static String qualifyColumnWithAlias(String columnName, String defaultAlias) {
+        if (!StringUtils.hasText(columnName)) {
+            return columnName;
+        }
+        // If column already has an alias (contains dot), don't modify
+        if (columnName.contains(".")) {
+            return columnName;
+        }
+        return defaultAlias + "." + columnName;
     }
 
     private static List<QueryPropertyMetadata> parseQueryPropertyMetadatas(Class<?> queryType,

@@ -3,6 +3,10 @@
 *.iml
 *.iws
 *.ipr
+.settings/
+.project
+.classpath
+.vscode/
 
 # 编译输出
 target/
@@ -14,22 +18,26 @@ bin/
 *.war
 *.ear
 
-# 日志文件
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# 日志
 *.log
 logs/
 
 # 系统文件
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # 环境变量
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
-# 依赖管理
+# 依赖管理（如果是多语言项目）
 node_modules/
 package-lock.json
 yarn.lock
@@ -40,3 +48,12 @@ yarn.lock
 *.swp
 *.swo
 *~
+*.bak
+
+# 测试报告
+test-output/
+reports/
+
+# 本地配置
+local.properties
+*.local

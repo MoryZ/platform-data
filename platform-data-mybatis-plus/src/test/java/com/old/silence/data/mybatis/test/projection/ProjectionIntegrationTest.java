@@ -33,6 +33,10 @@ import com.old.silence.data.mybatis.test.fixture.projection.UserDto;
 import com.old.silence.data.mybatis.test.fixture.projection.TestUserView;
 import com.old.silence.data.mybatis.test.fixture.projection.TestUserWithUserRolesView;
 import com.old.silence.data.mybatis.test.fixture.projection.TestUserRecordDto;
+import com.old.silence.data.mybatis.test.fixture.projection.TaskView;
+import com.old.silence.data.mybatis.test.fixture.entity.Task;
+import com.old.silence.data.mybatis.test.fixture.entity.Project;
+import com.old.silence.data.mybatis.test.fixture.projection.ProjectView;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -219,6 +223,37 @@ class ProjectionIntegrationTest {
 
         assertThat(list).isNotEmpty();
         assertThat(list.getFirst().getUsername()).isNotBlank();
+    }
+
+    @Test
+    void shouldSupportNestedInterfaceProjection() {
+        ProjectionRepository<Task, Long> repository = repositoryFactory.create(Task.class);
+
+        QueryWrapper<Task> queryWrapper = new QueryWrapper<>();
+        List<TaskView> list = repository.findByQuery(queryWrapper, TaskView.class);
+
+        assertThat(list).hasSize(3);
+
+        TaskView task1 = list.stream()
+                .filter(t -> "Task 1".equals(t.getTaskName()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(task1.getProject()).isNotNull();
+        assertThat(task1.getProject().getProjectName()).isEqualTo("Alpha Project");
+        assertThat(task1.getProject().getProjectCode()).isEqualTo("ALPHA");
+    }
+
+    @Test
+    void shouldSupportNestedInterfaceProjectionWithPagination() {
+        ProjectionRepository<Task, Long> repository = repositoryFactory.create(Task.class);
+
+        Page<?> page = new Page<>(1, 2);
+        IPage<TaskView> result = repository.findByQuery(new QueryWrapper<Task>(), page, TaskView.class);
+
+        assertThat(result.getRecords()).hasSize(2);
+        assertThat(result.getRecords().getFirst().getProject()).isNotNull();
+        assertThat(result.getRecords().getFirst().getProject().getProjectName()).isNotBlank();
     }
 
     @Test

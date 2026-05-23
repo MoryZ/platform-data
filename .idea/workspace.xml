@@ -4,153 +4,149 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f1747fd6-1c31-4eb7-9782-93c2b62022de" name="Changes" comment="init project" />
+    <list default="true" id="b98192db-d191-4b10-9e59-00b6269c17a1" name="Changes" comment="1" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="CompilerWorkspaceConfiguration">
-    <option name="MAKE_PROJECT_ON_SAVE" value="true" />
-  </component>
-  <component name="FileTemplateManagerImpl">
-    <option name="RECENT_TEMPLATES">
-      <list>
-        <option value="Class" />
-      </list>
-    </option>
-  </component>
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="master" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="JpbToolWindowState">
-    <option name="isToolWindowVisible" value="false" />
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;MoryZ&quot;
+  }
+}</component>
+  <component name="GitToolBoxStore">
+    <option name="recentBranches">
+      <RecentBranches>
+        <option name="branchesForRepo">
+          <list>
+            <RecentBranchesForRepo>
+              <option name="branches">
+                <list>
+                  <RecentBranch>
+                    <option name="branchName" value="main" />
+                    <option name="lastUsedInstant" value="1770026479" />
+                  </RecentBranch>
+                  <RecentBranch>
+                    <option name="branchName" value="master" />
+                    <option name="lastUsedInstant" value="1770026253" />
+                  </RecentBranch>
+                </list>
+              </option>
+              <option name="repositoryRootUrl" value="file://$PROJECT_DIR$" />
+            </RecentBranchesForRepo>
+          </list>
+        </option>
+      </RecentBranches>
+    </option>
   </component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/MoryZ/platform-data.git&quot;,
+    &quot;accountId&quot;: &quot;56af9e9a-2c69-4350-8582-25bef3117c96&quot;
+  }
+}</component>
   <component name="MavenImportPreferences">
     <option name="generalSettings">
       <MavenGeneralSettings>
         <option name="customMavenHome" value="D:\apache-maven-3.6.3" />
-        <option name="localRepository" value="E:\.m2\repository" />
         <option name="mavenHomeTypeForPersistence" value="CUSTOM" />
         <option name="userSettingsFile" value="D:\apache-maven-3.6.3\conf\settings.xml" />
       </MavenGeneralSettings>
     </option>
-    <option name="importingSettings">
-      <MavenImportingSettings>
-        <option name="jdkForImporter" value="11" />
-      </MavenImportingSettings>
-    </option>
   </component>
-  <component name="MavenRunner">
-    <option name="jreName" value="11" />
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
   </component>
   <component name="ProjectColorInfo">{
-  &quot;associatedIndex&quot;: 0
+  &quot;associatedIndex&quot;: 8
 }</component>
-  <component name="ProjectId" id="2xGcBkFzHXdSDBIItVe1V4z0FjR" />
-  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
+  <component name="ProjectId" id="396l30E7NpWzXEh4WsynF3dFvhs" />
+  <component name="ProjectLevelVcsManager">
     <ConfirmationsSetting value="2" id="Add" />
   </component>
   <component name="ProjectViewState">
     <option name="autoscrollFromSource" value="true" />
+    <option name="flattenModules" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Maven.platform-data [deploy].executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;E:/IdeaProjects/platform-data/platform-data-mybatis-plus/src/main/java/com/old/silence/data/commons/handler&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;reference.settings.project.maven.archetype.catalogs&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Maven.platform-data [clean].executor": "Run",
+    "Maven.platform-data [install].executor": "Run",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "2.0.1",
+    "junie.onboarding.icon.badge.shown": "true",
+    "kotlin-language-version-configured": "true",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "MavenSettings",
+    "to.speed.mode.migration.done": "true",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
-  <component name="RecentsManager">
-    <key name="CopyFile.RECENT_KEYS">
-      <recent name="E:\IdeaProjects\platform-data\platform-data-mybatis-plus\src\main\java\com\old\silence\data\commons\handler" />
-      <recent name="E:\IdeaProjects\platform-data\platform-data-commons\src\main\java\com\old\silence\data\commons" />
-    </key>
-    <key name="CopyClassDialog.RECENTS_KEY">
-      <recent name="com.old.silence.data.commons.autoconfigure" />
-      <recent name="com.old.silence.data.commons.injecter" />
-      <recent name="com.old.silence.data.commons.handler" />
-      <recent name="com.old.silence.data.commons.converter" />
-      <recent name="com.old.silence.data.commons.annotation" />
-    </key>
+}]]></component>
+  <component name="RunManager">
+    <configuration default="true" type="JetRunConfigurationType">
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-jdk-9823dce3aa75-a94e463ab2e7-intellij.indexing.shared.core-IU-243.26053.27" />
-        <option value="bundled-js-predefined-d6986cc7102b-1632447f56bf-JavaScript-IU-243.26053.27" />
+        <option value="bundled-jdk-30f59d01ecdd-37e91769500f-intellij.indexing.shared.core-IU-261.24374.151" />
       </set>
     </attachedChunks>
   </component>
-  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
-      <changelist id="f1747fd6-1c31-4eb7-9782-93c2b62022de" name="Changes" comment="" />
-      <created>1719736037784</created>
+      <changelist id="b98192db-d191-4b10-9e59-00b6269c17a1" name="Changes" comment="" />
+      <created>1765507421616</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1719736037784</updated>
-      <workItem from="1747567719003" duration="3821000" />
-      <workItem from="1747575941022" duration="3139000" />
-      <workItem from="1748161253232" duration="290000" />
-      <workItem from="1748161853537" duration="6000" />
-      <workItem from="1748219801318" duration="532000" />
-      <workItem from="1748266084240" duration="597000" />
-      <workItem from="1748267034857" duration="1403000" />
-      <workItem from="1748348411133" duration="595000" />
+      <updated>1765507421616</updated>
+      <workItem from="1770024198307" duration="631000" />
+      <workItem from="1776001160377" duration="593000" />
+      <workItem from="1776093823497" duration="236000" />
+      <workItem from="1776094118284" duration="41000" />
+      <workItem from="1776094264171" duration="53000" />
+      <workItem from="1776094335214" duration="172000" />
+      <workItem from="1776097624135" duration="4000" />
+      <workItem from="1777041060067" duration="41000" />
+      <workItem from="1777041227121" duration="121000" />
+      <workItem from="1777042437106" duration="4502000" />
+      <workItem from="1777078674647" duration="606000" />
+      <workItem from="1777170453420" duration="62000" />
+      <workItem from="1777170529222" duration="619000" />
+      <workItem from="1777186475549" duration="1458000" />
+      <workItem from="1778935744540" duration="37000" />
+      <workItem from="1779531350024" duration="1451000" />
     </task>
-    <task id="LOCAL-00001" summary="init project">
+    <task id="LOCAL-00001" summary="1">
       <option name="closed" value="true" />
-      <created>1747578497693</created>
+      <created>1777192117184</created>
       <option name="number" value="00001" />
       <option name="presentableId" value="LOCAL-00001" />
       <option name="project" value="LOCAL" />
-      <updated>1747578497693</updated>
+      <updated>1777192117184</updated>
     </task>
-    <task id="LOCAL-00002" summary="init project">
-      <option name="closed" value="true" />
-      <created>1747578535000</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1747578535000</updated>
-    </task>
-    <task id="LOCAL-00003" summary="init project">
-      <option name="closed" value="true" />
-      <created>1747578609628</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1747578609628</updated>
-    </task>
-    <task id="LOCAL-00004" summary="init project">
-      <option name="closed" value="true" />
-      <created>1747578654444</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1747578654444</updated>
-    </task>
-    <task id="LOCAL-00005" summary="init project">
-      <option name="closed" value="true" />
-      <created>1748219821462</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1748219821462</updated>
-    </task>
-    <option name="localTasksCounter" value="6" />
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -168,7 +164,18 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="init project" />
-    <option name="LAST_COMMIT_MESSAGE" value="init project" />
+    <MESSAGE value="1" />
+    <option name="LAST_COMMIT_MESSAGE" value="1" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="java-line">
+          <url>file://$PROJECT_DIR$/platform-data-mybatis-plus/src/main/java/com/old/silence/data/mybatis/projection/ProjectionMetadataResolver.java</url>
+          <line>359</line>
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>

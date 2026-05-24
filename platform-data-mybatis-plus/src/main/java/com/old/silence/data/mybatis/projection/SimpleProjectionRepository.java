@@ -32,6 +32,8 @@ import java.util.stream.StreamSupport;
  */
 public class SimpleProjectionRepository<T, ID extends Serializable> implements ProjectionRepository<T, ID> {
 
+    static final String ROOT_ALIAS = "t0";
+
     private static final Pattern SQL_QUALIFIER_PATTERN = Pattern.compile("\\b([A-Za-z_][A-Za-z0-9_]*)\\.");
 
     private final Class<T> entityType;
@@ -52,7 +54,7 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
 
         TableInfo tableInfo = getRequiredTableInfo();
         QueryWrapper<T> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq(tableInfo.getKeyColumn(), id);
+        queryWrapper.eq(ROOT_ALIAS + "." + tableInfo.getKeyColumn(), id);
 
         List<T> records = findByQuery(queryWrapper, entityType);
         return records.stream().findFirst();
@@ -64,7 +66,7 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
 
         TableInfo tableInfo = getRequiredTableInfo();
         QueryWrapper<T> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq(tableInfo.getKeyColumn(), id);
+        queryWrapper.eq(ROOT_ALIAS + "." + tableInfo.getKeyColumn(), id);
 
         List<P> records = findByQuery(queryWrapper, projectionType);
         return records.stream().findFirst();
@@ -94,7 +96,7 @@ public class SimpleProjectionRepository<T, ID extends Serializable> implements P
 
         TableInfo tableInfo = getRequiredTableInfo();
         QueryWrapper<T> queryWrapper = new QueryWrapper<>();
-        queryWrapper.in(tableInfo.getKeyColumn(), idList);
+        queryWrapper.in(ROOT_ALIAS + "." + tableInfo.getKeyColumn(), idList);
         return findByQuery(queryWrapper, projectionType);
     }
 

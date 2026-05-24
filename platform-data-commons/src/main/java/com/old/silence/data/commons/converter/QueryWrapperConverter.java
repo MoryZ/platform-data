@@ -55,9 +55,9 @@ public class QueryWrapperConverter {
 
     @SuppressWarnings("unchecked")
     public static <T> QueryWrapper<T> convert(Object query, Class<T> domainType, BeanFactory beanFactory, String tableAlias) {
-        String cacheKey = query.getClass().getName() + "|" + domainType.getName();
+        String cacheKey = query.getClass().getName() + "|" + domainType.getName() + "|" + (tableAlias != null ? tableAlias : "");
         List<QueryPropertyMetadata> metadatas = QUERY_METADATA_CACHE.computeIfAbsent(cacheKey,
-                key -> parseQueryPropertyMetadatas(query.getClass(), domainType, beanFactory));
+                key -> parseQueryPropertyMetadatas(query.getClass(), domainType, beanFactory, tableAlias));
 
         QueryWrapper<T> queryWrapper = new QueryWrapper<>();
         BeanWrapper accessor = new BeanWrapperImpl(query);
@@ -183,7 +183,8 @@ public class QueryWrapperConverter {
 
     private static List<QueryPropertyMetadata> parseQueryPropertyMetadatas(Class<?> queryType,
                                                                            Class<?> domainType,
-                                                                           BeanFactory beanFactory) {
+                                                                           BeanFactory beanFactory,
+                                                                           String tableAlias) {
         List<QueryPropertyMetadata> metadatas = new ArrayList<>();
 
         ReflectionUtils.doWithFields(queryType, field -> {
@@ -211,7 +212,7 @@ public class QueryWrapperConverter {
                     Field domainField = findField(domainType, parts[0]);
                     if (Collection.class.isAssignableFrom(domainField.getType())) {
                         String subquerySql = buildCollectionSubquerySql(
-                                domainType, domainField, parts[1], annotation.type());
+                                domainType, domainField, parts[1], annotation.type(), tableAlias);
                         if (subquerySql != null) {
                             metadatas.add(new QueryPropertyMetadata(
                                     field.getName(), null, annotation.type(),
@@ -340,7 +341,8 @@ public class QueryWrapperConverter {
      * Returns null when the path cannot be resolved (caller falls back to Phase-2 join).
      */
     private static String buildCollectionSubquerySql(Class<?> domainType, Field collectionField,
-                                                     String nestedPropertyPath, Type operator) {
+                                                     String nestedPropertyPath, Type operator,
+                                                     String tableAlias) {
         // Multi-value operators require a different approach — fall back to Phase-2
         if (operator == Type.IN || operator == Type.NOT_IN) {
             return null;
@@ -364,6 +366,7 @@ public class QueryWrapperConverter {
             }
 
             String rootAlias = "c0";
+            String mainTableAlias = StringUtils.hasText(tableAlias) ? tableAlias : "t0";
             StringBuilder fromClause = new StringBuilder(targetTable).append(" ").append(rootAlias);
             Class<?> currentType = targetType;
             String currentAlias = rootAlias;
@@ -411,7 +414,7 @@ public class QueryWrapperConverter {
             String inClause = negated ? "NOT IN" : "IN";
             String innerCondition = buildInnerWhereClause(currentAlias + "." + leafColumn, operator);
 
-            return "t0." + sourcePkColumn + " " + inClause
+            return mainTableAlias + "." + sourcePkColumn + " " + inClause
                     + " (SELECT " + rootAlias + "." + fkColumn + " FROM " + fromClause
                     + " WHERE " + innerCondition + ")";
         } catch (NoSuchFieldException e) {

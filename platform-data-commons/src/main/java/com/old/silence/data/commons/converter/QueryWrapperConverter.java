@@ -50,6 +50,11 @@ public class QueryWrapperConverter {
 
     @SuppressWarnings("unchecked")
     public static <T> QueryWrapper<T> convert(Object query, Class<T> domainType, BeanFactory beanFactory) {
+        return convert(query, domainType, beanFactory, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> QueryWrapper<T> convert(Object query, Class<T> domainType, BeanFactory beanFactory, String tableAlias) {
         String cacheKey = query.getClass().getName() + "|" + domainType.getName();
         List<QueryPropertyMetadata> metadatas = QUERY_METADATA_CACHE.computeIfAbsent(cacheKey,
                 key -> parseQueryPropertyMetadatas(query.getClass(), domainType, beanFactory));
@@ -68,7 +73,7 @@ public class QueryWrapperConverter {
                     .map(it -> ((JdbcQueryAttributeConverter<Object, Object>) it).convert(metadata.columnName, valueToConvert))
                     .orElse(value);
 
-            applyCondition(queryWrapper, metadata, value);
+            applyCondition(queryWrapper, metadata, value, tableAlias);
         }
 
         return queryWrapper;
@@ -76,15 +81,16 @@ public class QueryWrapperConverter {
 
     private static <T> void applyCondition(QueryWrapper<T> queryWrapper,
                                            QueryPropertyMetadata metadata,
-                                           Object value) {
+                                           Object value,
+                                           String tableAlias) {
         // Collection association path: use pre-built IN subquery
         if (metadata.subquery && StringUtils.hasText(metadata.subquerySqlTemplate)) {
             queryWrapper.apply(metadata.subquerySqlTemplate, value);
             return;
         }
 
-        // Add table alias if column name has no alias (no dot separator)
-        String column = qualifyColumnWithAlias(metadata.columnName, "t0");
+        // Add table alias if column name has no alias (no dot separator) and tableAlias is provided
+        String column = qualifyColumnWithAlias(metadata.columnName, tableAlias);
         Type operator = metadata.operator;
 
         switch (operator) {
@@ -158,6 +164,7 @@ public class QueryWrapperConverter {
     /**
      * Qualify column name with table alias if it doesn't already have one.
      * Handles nested paths like "job_group.group_name" which already have an alias.
+     * If defaultAlias is null or blank, returns the column name as-is.
      */
     private static String qualifyColumnWithAlias(String columnName, String defaultAlias) {
         if (!StringUtils.hasText(columnName)) {
@@ -165,6 +172,10 @@ public class QueryWrapperConverter {
         }
         // If column already has an alias (contains dot), don't modify
         if (columnName.contains(".")) {
+            return columnName;
+        }
+        // If no default alias provided, return column name as-is
+        if (!StringUtils.hasText(defaultAlias)) {
             return columnName;
         }
         return defaultAlias + "." + columnName;
